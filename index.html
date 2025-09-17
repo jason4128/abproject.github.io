@@ -99,7 +99,7 @@
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.4.0/firebase-app.js";
-        import { getFirestore, collection, addDoc, onSnapshot, query, orderBy, doc, updateDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/10.4.0/firebase-firestore.js";
+        import { getFirestore, collection, addDoc, onSnapshot, query, orderBy, doc, updateDoc, deleteDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.4.0/firebase-firestore.js";
         import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.4.0/firebase-auth.js";
 
         const firebaseConfig = {
@@ -165,11 +165,10 @@
                 await addDoc(collection(db, "issues"), {
                     issueName: issueName,
                     status: "未處理",
-                    datePosted: new Date(),
+                    // 使用 serverTimestamp() 來確保日期時間的精確性
+                    datePosted: serverTimestamp(),
                     vendorReply: "",
-                    estRepairTime: "",
-                    controlStatus: "",
-                    photos: []
+                    estRepairTime: ""
                 });
                 issueForm.reset();
             } catch (e) {
@@ -194,12 +193,23 @@
                 
                 const deleteBtnHtml = user ? `<button class="delete-btn" data-id="${issueId}">刪除</button>` : '';
 
+                // 計算等待天數
+                let waitingDaysHtml = '';
+                if (data.status !== '已完成' && data.datePosted) {
+                    const today = new Date();
+                    const postedDate = data.datePosted.toDate();
+                    const diffTime = today - postedDate;
+                    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                    waitingDaysHtml = `<p><strong>等待天數：</strong>${diffDays} 天</p>`;
+                }
+
                 const issueItem = document.createElement('div');
                 issueItem.className = `issue-item ${statusClass}`;
                 issueItem.innerHTML = `
                     <h3>${data.issueName}</h3>
-                    <p><strong>登載日期：</strong>${data.datePosted.toDate().toLocaleString('zh-TW')}</p>
+                    <p><strong>登載日期：</strong>${data.datePosted ? data.datePosted.toDate().toLocaleString('zh-TW') : '載入中...'}</p>
                     <p><strong>目前狀態：</strong>${data.status}</p>
+                    ${waitingDaysHtml}
                     <p><strong>廠商回覆：</strong>${data.vendorReply || '尚未回覆'}</p>
                     <label><strong>預計維修時間：</strong></label>
                     <input type="date" data-id="${issueId}" value="${data.estRepairTime}"><br>
