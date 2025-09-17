@@ -11,24 +11,20 @@
             max-width: 800px; 
             margin: 0 auto;
             padding: 20px;
+            background-color: #f4f7f9;
         }
         .issue-item { 
             border: 1px solid #ccc; 
             padding: 15px; 
             margin-bottom: 20px; 
             border-radius: 8px; 
+            background-color: #ffffff;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
         }
-        .unprocessed { background-color: #ffe6e6; }
-        .in-progress { background-color: #fff8e1; }
-        .waiting-parts { background-color: #f3e5f5; }
-        .completed { background-color: #e6ffe6; }
-        .status-btn { 
-            padding: 5px 10px; 
-            cursor: pointer; 
-            border: 1px solid #ccc; 
-            border-radius: 4px; 
-            background-color: #f9f9f9; 
-        }
+        .unprocessed { border-left: 5px solid #ff4d4d; }
+        .in-progress { border-left: 5px solid #ffc107; }
+        .waiting-parts { border-left: 5px solid #9c27b0; }
+        .completed { border-left: 5px solid #28a745; }
         .vendor-form { 
             margin-top: 15px; 
             padding-top: 15px; 
@@ -38,25 +34,49 @@
             width: 100%; 
             box-sizing: border-box; 
             margin-top: 5px; 
+            border-radius: 4px;
+            border: 1px solid #ccc;
+            padding: 8px;
         }
-        .delete-btn { 
-            background-color: #ffcccc; 
-            color: #cc0000; 
-            border: 1px solid #cc0000; 
+        .update-btn, .delete-btn {
+            padding: 8px 15px;
+            border-radius: 4px;
+            border: none;
+            cursor: pointer;
+            color: white;
+            margin-top: 10px;
         }
+        .update-btn { background-color: #007bff; }
+        .delete-btn { background-color: #dc3545; }
+        .update-btn:hover { background-color: #0056b3; }
+        .delete-btn:hover { background-color: #c82333; }
+        
         #auth-container { 
             text-align: right; 
             margin-bottom: 20px; 
         }
-        .filter-container {
+        .tabs {
+            display: flex;
+            gap: 5px;
             margin-bottom: 20px;
+            overflow-x: auto;
+            white-space: nowrap;
         }
-        .filter-container select {
-            padding: 8px;
-            border-radius: 4px;
-            border: 1px solid #ccc;
+        .tabs button {
+            background-color: #e9ecef;
+            border: 1px solid #dee2e6;
+            padding: 10px 15px;
+            cursor: pointer;
+            border-radius: 5px 5px 0 0;
+            font-size: 1rem;
+            transition: background-color 0.2s ease-in-out;
         }
-        
+        .tabs button.active {
+            background-color: #ffffff;
+            border-bottom-color: #ffffff;
+            font-weight: bold;
+        }
+
         /* RWD 樣式 */
         @media (max-width: 600px) {
             body {
@@ -67,12 +87,8 @@
                 text-align: center;
                 margin-bottom: 10px;
             }
-            .issue-item {
-                padding: 10px;
-            }
-            .vendor-form {
-                padding-top: 10px;
-                margin-top: 10px;
+            .tabs {
+                flex-wrap: nowrap;
             }
         }
     </style>
@@ -103,15 +119,12 @@
     
     <h2>維修項目列表</h2>
 
-    <div class="filter-container">
-        <label for="statusFilter">篩選狀態：</label>
-        <select id="statusFilter">
-            <option value="all">所有項目</option>
-            <option value="未處理">未處理</option>
-            <option value="維修中">維修中</option>
-            <option value="待料中">待料中</option>
-            <option value="已完成">已完成</option>
-        </select>
+    <div class="tabs" id="statusTabs">
+        <button class="tab-btn active" data-status="all">所有項目</button>
+        <button class="tab-btn" data-status="未處理">未處理</button>
+        <button class="tab-btn" data-status="維修中">維修中</button>
+        <button class="tab-btn" data-status="待料中">待料中</button>
+        <button class="tab-btn" data-status="已完成">已完成</button>
     </div>
 
     <div id="issueList">
@@ -136,25 +149,21 @@
         const db = getFirestore(app);
         const auth = getAuth(app);
 
-        // 監聽登入狀態改變
         onAuthStateChanged(auth, (user) => {
             const loginForm = document.getElementById('login-form');
             const userInfo = document.getElementById('user-info');
             const userEmailSpan = document.getElementById('user-email');
             
             if (user) {
-                // 已登入
                 loginForm.style.display = 'none';
                 userInfo.style.display = 'block';
                 userEmailSpan.textContent = user.email;
             } else {
-                // 未登入
                 loginForm.style.display = 'block';
                 userInfo.style.display = 'none';
             }
         });
 
-        // 登入功能
         document.getElementById('login-btn').addEventListener('click', async () => {
             const email = document.getElementById('email').value;
             const password = document.getElementById('password').value;
@@ -166,13 +175,11 @@
             }
         });
 
-        // 登出功能
         document.getElementById('logout-btn').addEventListener('click', async () => {
             await signOut(auth);
             alert('您已登出。');
         });
 
-        // 新增維修項目
         const issueForm = document.getElementById('issueForm');
         issueForm.addEventListener('submit', async (e) => {
             e.preventDefault();
@@ -196,14 +203,11 @@
             }
         });
         
-        // 篩選器元素
-        const statusFilter = document.getElementById('statusFilter');
+        const statusTabs = document.getElementById('statusTabs');
         const issueList = document.getElementById('issueList');
-        let unsubscribe = null; // 用來儲存 onSnapshot 的退訂函式
+        let unsubscribe = null; 
 
-        // 根據篩選條件建立查詢並監聽
         const setupRealtimeListener = (filterStatus) => {
-            // 如果已經有監聽器，先退訂
             if (unsubscribe) {
                 unsubscribe();
             }
@@ -212,11 +216,9 @@
             if (filterStatus === 'all') {
                 issuesQuery = query(collection(db, "issues"), orderBy("datePosted", "desc"));
             } else {
-                // 使用 where 篩選狀態
                 issuesQuery = query(collection(db, "issues"), where("status", "==", filterStatus), orderBy("datePosted", "desc"));
             }
 
-            // 啟動新的監聽器
             unsubscribe = onSnapshot(issuesQuery, (querySnapshot) => {
                 issueList.innerHTML = '';
                 const user = auth.currentUser;
@@ -234,7 +236,7 @@
                     if (data.status !== '已完成' && data.datePosted) {
                         const today = new Date();
                         const postedDate = data.datePosted.toDate();
-                        const diffTime = today - postedDate;
+                        const diffTime = today.getTime() - postedDate.getTime();
                         const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
                         waitingDaysHtml = `<p><strong>等待天數：</strong>${diffDays} 天</p>`;
                     }
@@ -267,12 +269,18 @@
             });
         };
 
-        // 監聽篩選器改變事件
-        statusFilter.addEventListener('change', (e) => {
-            setupRealtimeListener(e.target.value);
+        statusTabs.addEventListener('click', (e) => {
+            if (e.target.matches('.tab-btn')) {
+                // 移除所有按鈕的 active 類別
+                document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+                // 為被點擊的按鈕新增 active 類別
+                e.target.classList.add('active');
+                
+                const filterStatus = e.target.dataset.status;
+                setupRealtimeListener(filterStatus);
+            }
         });
 
-        // 網頁載入時，啟動預設監聽器
         setupRealtimeListener('all');
 
         issueList.addEventListener('click', async (e) => {
