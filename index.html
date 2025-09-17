@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <title>維修管理平台</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .issue-item { border: 1px solid #ccc; padding: 15px; margin-bottom: 20px; border-radius: 8px; }
+        .unprocessed { background-color: #ffe6e6; }
+        .in-progress { background-color: #fff8e1; }
+        .waiting-parts { background-color: #f3e5f5; }
+        .completed { background-color: #e6ffe6; }
+        .status-btn { padding: 5px 10px; cursor: pointer; border: 1px solid #ccc; border-radius: 4px; background-color: #f9f9f9; }
+        .vendor-form { margin-top: 15px; padding-top: 15px; border-top: 1px dashed #ccc; }
+        .vendor-form textarea, .vendor-form input, .vendor-form select { width: 100%; box-sizing: border-box; margin-top: 5px; }
+        .delete-btn { background-color: #ffcccc; color: #cc0000; border: 1px solid #cc0000; }
+        #auth-container { text-align: right; margin-bottom: 20px; }
+    </style>
+</head>
+<body>
+
+    <div id="auth-container">
+        <div id="login-form" style="display:none;">
+            <input type="email" id="email" placeholder="電子郵件">
+            <input type="password" id="password" placeholder="密碼">
+            <button id="login-btn">登入</button>
+        </div>
+        <div id="user-info" style="display:none;">
+            <span id="user-email"></span>
+            <button id="logout-btn">登出</button>
+        </div>
+    </div>
+    <hr>
+
+    <h2>新增維修項目</h2>
+    <form id="issueForm">
+        <label for="issueName">損壞項目：</label><br>
+        <input type="text" id="issueName" name="issueName" required><br><br>
+        <button type="submit">新增項目</button>
+    </form>
+
+    ---
+    
+    <h2>維修項目列表</h2>
+    <div id="issueList">
+        </div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.4.0/firebase-app.js";
+        import { getFirestore, collection, addDoc, onSnapshot, query, orderBy, doc, updateDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/10.4.0/firebase-firestore.js";
+        import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.4.0/firebase-auth.js";
+
+        const firebaseConfig = {
+          apiKey: "AIzaSyAJmR6Cj7RXO7fjzwvRUAto_ThEdbDJoXE",
+          authDomain: "ab-project-1e438.firebaseapp.com",
+          projectId: "ab-project-1e438",
+          storageBucket: "ab-project-1e438.firebasestorage.app",
+          messagingSenderId: "76552910163",
+          appId: "1:76552910163:web:7d0a40e84c52a7bccb9da6",
+          measurementId: "G-PBJR6HGK4N"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+        const auth = getAuth(app);
+
+        // 監聽登入狀態改變
+        onAuthStateChanged(auth, (user) => {
+            const loginForm = document.getElementById('login-form');
+            const userInfo = document.getElementById('user-info');
+            const userEmailSpan = document.getElementById('user-email');
+            
+            if (user) {
+                // 已登入
+                loginForm.style.display = 'none';
+                userInfo.style.display = 'block';
+                userEmailSpan.textContent = user.email;
+            } else {
+                // 未登入
+                loginForm.style.display = 'block';
+                userInfo.style.display = 'none';
+            }
+        });
+
+        // 登入功能
+        document.getElementById('login-btn').addEventListener('click', async () => {
+            const email = document.getElementById('email').value;
+            const password = document.getElementById('password').value;
+            try {
+                await signInWithEmailAndPassword(auth, email, password);
+                alert('登入成功！');
+            } catch (error) {
+                alert('登入失敗：' + error.message);
+            }
+        });
+
+        // 登出功能
+        document.getElementById('logout-btn').addEventListener('click', async () => {
+            await signOut(auth);
+            alert('您已登出。');
+        });
+
+
+        const issueForm = document.getElementById('issueForm');
+        issueForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const issueName = document.getElementById('issueName').value;
+            if (!issueName) {
+                alert("請輸入損壞項目！");
+                return;
+            }
+            try {
+                await addDoc(collection(db, "issues"), {
+                    issueName: issueName,
+                    status: "未處理",
+                    datePosted: new Date(),
+                    vendorReply: "",
+                    estRepairTime: "",
+                    controlStatus: "",
+                    photos: []
+                });
+                issueForm.reset();
+            } catch (e) {
+                console.error("新增文件時發生錯誤：", e);
+                alert("新增項目失敗，請檢查主控台。");
+            }
+        });
+
+        const issueList = document.getElementById('issueList');
+        const q = query(collection(db, "issues"), orderBy("datePosted", "desc"));
+
+        onSnapshot(q, (querySnapshot) => {
+            issueList.innerHTML = '';
+            const user = auth.currentUser;
+            querySnapshot.forEach((doc) => {
+                const data = doc.data();
+                const issueId = doc.id;
+                let statusClass = 'unprocessed';
+                if (data.status === '已完成') statusClass = 'completed';
+                else if (data.status === '維修中') statusClass = 'in-progress';
+                else if (data.status === '待料中') statusClass = 'waiting-parts';
+                
+                const deleteBtnHtml = user ? `<button class="delete-btn" data-id="${issueId}">刪除</button>` : '';
+
+                const issueItem = document.createElement('div');
+                issueItem.className = `issue-item ${statusClass}`;
+                issueItem.innerHTML = `
+                    <h3>${data.issueName}</h3>
+                    <p><strong>登載日期：</strong>${data.datePosted.toDate().toLocaleString('zh-TW')}</p>
+                    <p><strong>目前狀態：</strong>${data.status}</p>
+                    <p><strong>廠商回覆：</strong>${data.vendorReply || '尚未回覆'}</p>
+                    <label><strong>預計維修時間：</strong></label>
+                    <input type="date" data-id="${issueId}" value="${data.estRepairTime}"><br>
+                    
+                    <div class="vendor-form">
+                        <textarea data-id="${issueId}" placeholder="廠商回覆..." rows="3">${data.vendorReply}</textarea><br>
+                        <select class="status-select" data-id="${issueId}">
+                            <option value="未處理" ${data.status === '未處理' ? 'selected' : ''}>未處理</option>
+                            <option value="維修中" ${data.status === '維修中' ? 'selected' : ''}>維修中</option>
+                            <option value="待料中" ${data.status === '待料中' ? 'selected' : ''}>待料中</option>
+                            <option value="已完成" ${data.status === '已完成' ? 'selected' : ''}>已完成</option>
+                        </select>
+                        <button class="update-btn" data-id="${issueId}">更新</button>
+                        ${deleteBtnHtml}
+                    </div>
+                `;
+                issueList.appendChild(issueItem);
+            });
+        });
+
+        issueList.addEventListener('click', async (e) => {
+            const issueId = e.target.dataset.id;
+            const issueRef = doc(db, "issues", issueId);
+            const user = auth.currentUser;
+
+            if (e.target.classList.contains('update-btn')) {
+                const vendorReply = document.querySelector(`textarea[data-id="${issueId}"]`).value;
+                const estRepairTime = document.querySelector(`input[data-id="${issueId}"]`).value;
+                const newStatus = document.querySelector(`select[data-id="${issueId}"]`).value;
+                
+                try {
+                    await updateDoc(issueRef, {
+                        vendorReply: vendorReply,
+                        estRepairTime: estRepairTime,
+                        status: newStatus
+                    });
+                    console.log("狀態及回覆更新成功！");
+                } catch (e) {
+                    console.error("更新時發生錯誤：", e);
+                }
+            } else if (e.target.classList.contains('delete-btn')) {
+                // 檢查是否已登入，以防止繞過UI
+                if (!user) {
+                    alert("您沒有刪除此項目的權限，請先登入。");
+                    return;
+                }
+                const confirmed = confirm("您確定要刪除這個維修項目嗎？此操作無法復原。");
+                if (confirmed) {
+                    try {
+                        await deleteDoc(issueRef);
+                        console.log("項目已成功刪除！");
+                    } catch (e) {
+                        console.error("刪除時發生錯誤：", e);
+                    }
+                }
+            }
+        });
+    </script>
+
+</body>
+</html>
