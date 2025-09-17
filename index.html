@@ -48,6 +48,14 @@
             text-align: right; 
             margin-bottom: 20px; 
         }
+        .filter-container {
+            margin-bottom: 20px;
+        }
+        .filter-container select {
+            padding: 8px;
+            border-radius: 4px;
+            border: 1px solid #ccc;
+        }
         
         /* RWD 樣式 */
         @media (max-width: 600px) {
@@ -91,15 +99,27 @@
         <button type="submit">新增項目</button>
     </form>
 
-    ---
+    <hr>
     
     <h2>維修項目列表</h2>
+
+    <div class="filter-container">
+        <label for="statusFilter">篩選狀態：</label>
+        <select id="statusFilter">
+            <option value="all">所有項目</option>
+            <option value="未處理">未處理</option>
+            <option value="維修中">維修中</option>
+            <option value="待料中">待料中</option>
+            <option value="已完成">已完成</option>
+        </select>
+    </div>
+
     <div id="issueList">
-        </div>
+    </div>
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.4.0/firebase-app.js";
-        import { getFirestore, collection, addDoc, onSnapshot, query, orderBy, doc, updateDoc, deleteDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.4.0/firebase-firestore.js";
+        import { getFirestore, collection, addDoc, onSnapshot, query, orderBy, doc, updateDoc, deleteDoc, serverTimestamp, where } from "https://www.gstatic.com/firebasejs/10.4.0/firebase-firestore.js";
         import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.4.0/firebase-auth.js";
 
         const firebaseConfig = {
@@ -152,7 +172,7 @@
             alert('您已登出。');
         });
 
-
+        // 新增維修項目
         const issueForm = document.getElementById('issueForm');
         issueForm.addEventListener('submit', async (e) => {
             e.preventDefault();
@@ -165,7 +185,6 @@
                 await addDoc(collection(db, "issues"), {
                     issueName: issueName,
                     status: "未處理",
-                    // 使用 serverTimestamp() 來確保日期時間的精確性
                     datePosted: serverTimestamp(),
                     vendorReply: "",
                     estRepairTime: ""
@@ -176,59 +195,85 @@
                 alert("新增項目失敗，請檢查主控台。");
             }
         });
-
+        
+        // 篩選器元素
+        const statusFilter = document.getElementById('statusFilter');
         const issueList = document.getElementById('issueList');
-        const q = query(collection(db, "issues"), orderBy("datePosted", "desc"));
+        let unsubscribe = null; // 用來儲存 onSnapshot 的退訂函式
 
-        onSnapshot(q, (querySnapshot) => {
-            issueList.innerHTML = '';
-            const user = auth.currentUser;
-            querySnapshot.forEach((doc) => {
-                const data = doc.data();
-                const issueId = doc.id;
-                let statusClass = 'unprocessed';
-                if (data.status === '已完成') statusClass = 'completed';
-                else if (data.status === '維修中') statusClass = 'in-progress';
-                else if (data.status === '待料中') statusClass = 'waiting-parts';
-                
-                const deleteBtnHtml = user ? `<button class="delete-btn" data-id="${issueId}">刪除</button>` : '';
+        // 根據篩選條件建立查詢並監聽
+        const setupRealtimeListener = (filterStatus) => {
+            // 如果已經有監聽器，先退訂
+            if (unsubscribe) {
+                unsubscribe();
+            }
 
-                // 計算等待天數
-                let waitingDaysHtml = '';
-                if (data.status !== '已完成' && data.datePosted) {
-                    const today = new Date();
-                    const postedDate = data.datePosted.toDate();
-                    const diffTime = today - postedDate;
-                    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-                    waitingDaysHtml = `<p><strong>等待天數：</strong>${diffDays} 天</p>`;
-                }
+            let issuesQuery;
+            if (filterStatus === 'all') {
+                issuesQuery = query(collection(db, "issues"), orderBy("datePosted", "desc"));
+            } else {
+                // 使用 where 篩選狀態
+                issuesQuery = query(collection(db, "issues"), where("status", "==", filterStatus), orderBy("datePosted", "desc"));
+            }
 
-                const issueItem = document.createElement('div');
-                issueItem.className = `issue-item ${statusClass}`;
-                issueItem.innerHTML = `
-                    <h3>${data.issueName}</h3>
-                    <p><strong>登載日期：</strong>${data.datePosted ? data.datePosted.toDate().toLocaleString('zh-TW') : '載入中...'}</p>
-                    <p><strong>目前狀態：</strong>${data.status}</p>
-                    ${waitingDaysHtml}
-                    <p><strong>廠商回覆：</strong>${data.vendorReply || '尚未回覆'}</p>
-                    <label><strong>預計維修時間：</strong></label>
-                    <input type="date" data-id="${issueId}" value="${data.estRepairTime}"><br>
+            // 啟動新的監聽器
+            unsubscribe = onSnapshot(issuesQuery, (querySnapshot) => {
+                issueList.innerHTML = '';
+                const user = auth.currentUser;
+                querySnapshot.forEach((doc) => {
+                    const data = doc.data();
+                    const issueId = doc.id;
+                    let statusClass = 'unprocessed';
+                    if (data.status === '已完成') statusClass = 'completed';
+                    else if (data.status === '維修中') statusClass = 'in-progress';
+                    else if (data.status === '待料中') statusClass = 'waiting-parts';
                     
-                    <div class="vendor-form">
-                        <textarea data-id="${issueId}" placeholder="廠商回覆..." rows="3">${data.vendorReply}</textarea><br>
-                        <select class="status-select" data-id="${issueId}">
-                            <option value="未處理" ${data.status === '未處理' ? 'selected' : ''}>未處理</option>
-                            <option value="維修中" ${data.status === '維修中' ? 'selected' : ''}>維修中</option>
-                            <option value="待料中" ${data.status === '待料中' ? 'selected' : ''}>待料中</option>
-                            <option value="已完成" ${data.status === '已完成' ? 'selected' : ''}>已完成</option>
-                        </select>
-                        <button class="update-btn" data-id="${issueId}">更新</button>
-                        ${deleteBtnHtml}
-                    </div>
-                `;
-                issueList.appendChild(issueItem);
+                    const deleteBtnHtml = user ? `<button class="delete-btn" data-id="${issueId}">刪除</button>` : '';
+
+                    let waitingDaysHtml = '';
+                    if (data.status !== '已完成' && data.datePosted) {
+                        const today = new Date();
+                        const postedDate = data.datePosted.toDate();
+                        const diffTime = today - postedDate;
+                        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                        waitingDaysHtml = `<p><strong>等待天數：</strong>${diffDays} 天</p>`;
+                    }
+
+                    const issueItem = document.createElement('div');
+                    issueItem.className = `issue-item ${statusClass}`;
+                    issueItem.innerHTML = `
+                        <h3>${data.issueName}</h3>
+                        <p><strong>登載日期：</strong>${data.datePosted ? data.datePosted.toDate().toLocaleString('zh-TW') : '載入中...'}</p>
+                        <p><strong>目前狀態：</strong>${data.status}</p>
+                        ${waitingDaysHtml}
+                        <p><strong>廠商回覆：</strong>${data.vendorReply || '尚未回覆'}</p>
+                        <label><strong>預計維修時間：</strong></label>
+                        <input type="date" data-id="${issueId}" value="${data.estRepairTime}"><br>
+                        
+                        <div class="vendor-form">
+                            <textarea data-id="${issueId}" placeholder="廠商回覆..." rows="3">${data.vendorReply}</textarea><br>
+                            <select class="status-select" data-id="${issueId}">
+                                <option value="未處理" ${data.status === '未處理' ? 'selected' : ''}>未處理</option>
+                                <option value="維修中" ${data.status === '維修中' ? 'selected' : ''}>維修中</option>
+                                <option value="待料中" ${data.status === '待料中' ? 'selected' : ''}>待料中</option>
+                                <option value="已完成" ${data.status === '已完成' ? 'selected' : ''}>已完成</option>
+                            </select>
+                            <button class="update-btn" data-id="${issueId}">更新</button>
+                            ${deleteBtnHtml}
+                        </div>
+                    `;
+                    issueList.appendChild(issueItem);
+                });
             });
+        };
+
+        // 監聽篩選器改變事件
+        statusFilter.addEventListener('change', (e) => {
+            setupRealtimeListener(e.target.value);
         });
+
+        // 網頁載入時，啟動預設監聽器
+        setupRealtimeListener('all');
 
         issueList.addEventListener('click', async (e) => {
             const issueId = e.target.dataset.id;
@@ -251,7 +296,6 @@
                     console.error("更新時發生錯誤：", e);
                 }
             } else if (e.target.classList.contains('delete-btn')) {
-                // 檢查是否已登入，以防止繞過UI
                 if (!user) {
                     alert("您沒有刪除此項目的權限，請先登入。");
                     return;
