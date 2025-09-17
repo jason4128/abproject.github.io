@@ -222,7 +222,7 @@
                         <p><strong>廠商回覆：</strong>${issue.vendorReply || '尚未回覆'}</p>
                         <p><strong>預計維修時間：</strong>${issue.estRepairTime || '尚未預估'}</p>
                         <textarea class="vendor-reply-input" placeholder="廠商回覆...">${issue.vendorReply || ''}</textarea>
-                        <input type="text" class="est-repair-time-input" placeholder="預計維修時間...">
+                        <input type="date" class="est-repair-time-input" placeholder="預計維修時間...">
                         <select class="status-select">
                             <option value="未處理" ${issue.status === '未處理' ? 'selected' : ''}>未處理</option>
                             <option value="處理中" ${issue.status === '處理中' ? 'selected' : ''}>處理中</option>
@@ -271,3 +271,4 @@
     </script>
 </body>
 </html>
+
