@@ -1,18 +1,16 @@
 <!DOCTYPE html>
 <html lang="zh-Hant">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>維修管理平台</title>
-  <!-- Tailwind CDN -->
   <script src="https://cdn.tailwindcss.com"></script>
 </head>
 <body class="bg-gray-100 p-6">
 
   <!-- 登入區塊 -->
   <div id="auth-container" class="flex justify-end mb-4">
-    <!-- 預設可見，若已登入 onAuthStateChanged 會隱藏 -->
-    <div id="login-form" class="space-x-2">
+    <div id="login-form" class="space-x-2 hidden">
       <input type="email" id="email" placeholder="電子郵件" class="border rounded px-2 py-1">
       <input type="password" id="password" placeholder="密碼" class="border rounded px-2 py-1">
       <button id="login-btn" class="bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded">登入</button>
@@ -37,8 +35,7 @@
 
   <!-- 分頁 + 排序 -->
   <div class="flex flex-col md:flex-row md:items-center md:justify-between mb-4 gap-2">
-    <!-- 加上 id= statusTabs 供 JS 綁定 -->
-    <div id="statusTabs" class="flex space-x-2 overflow-x-auto">
+    <div class="flex space-x-2 overflow-x-auto" id="statusTabs">
       <button class="tab-btn bg-white border px-4 py-2 rounded-t-md active" data-status="all">所有項目</button>
       <button class="tab-btn bg-gray-200 border px-4 py-2 rounded-t-md" data-status="未處理">未處理</button>
       <button class="tab-btn bg-gray-200 border px-4 py-2 rounded-t-md" data-status="維修中">維修中</button>
@@ -60,13 +57,11 @@
   <!-- 維修列表 -->
   <div id="issueList" class="space-y-4"></div>
 
-  <!-- Firebase + 程式邏輯 -->
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.4.0/firebase-app.js";
-    import { getFirestore, collection, onSnapshot, addDoc, doc, updateDoc, deleteDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.4.0/firebase-firestore.js";
+    import { getFirestore, collection, addDoc, onSnapshot, query, orderBy, doc, updateDoc, deleteDoc, serverTimestamp, where } from "https://www.gstatic.com/firebasejs/10.4.0/firebase-firestore.js";
     import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.4.0/firebase-auth.js";
 
-    // ---------- Firebase config (保留你原本的) ----------
     const firebaseConfig = {
       apiKey: "AIzaSyAJmR6Cj7RXO7fjzwvRUAto_ThEdbDJoXE",
       authDomain: "ab-project-1e438.firebaseapp.com",
@@ -81,19 +76,6 @@
     const db = getFirestore(app);
     const auth = getAuth(app);
 
-    // ---------- UI / state ----------
-    const loginForm = document.getElementById('login-form');
-    const userInfo = document.getElementById('user-info');
-    const userEmailSpan = document.getElementById('user-email');
-    const loginBtn = document.getElementById('login-btn');
-    const logoutBtn = document.getElementById('logout-btn');
-
-    const issueForm = document.getElementById('issueForm');
-    const issueList = document.getElementById('issueList');
-    const searchInput = document.getElementById('searchInput');
-    const statusTabs = document.getElementById('statusTabs');
-    const sortSelect = document.getElementById('sortSelect');
-
     const statusBadge = {
       "未處理": "bg-red-500 text-white px-2 py-1 rounded text-sm",
       "維修中": "bg-yellow-500 text-white px-2 py-1 rounded text-sm",
@@ -101,309 +83,142 @@
       "已完成": "bg-green-600 text-white px-2 py-1 rounded text-sm"
     };
 
-    let allIssuesData = []; // snapshot.docs
     let unsubscribe = null;
+    let allIssuesData = [];
     let currentSort = "desc";
-    let activeTab = "all";
-    let currentUser = null;
 
-    // ---------- Auth state ----------
+    // 登入狀態監聽
     onAuthStateChanged(auth, (user) => {
-      currentUser = user;
+      const loginForm = document.getElementById('login-form');
+      const userInfo = document.getElementById('user-info');
+      const userEmailSpan = document.getElementById('user-email');
       if (user) {
-        // 隱藏登入表單、顯示使用者資訊
         loginForm.classList.add("hidden");
         userInfo.classList.remove("hidden");
-        userEmailSpan.textContent = user.email || user.uid;
+        userEmailSpan.textContent = user.email;
       } else {
-        // 未登入：顯示登入表單，隱藏 user info
         loginForm.classList.remove("hidden");
         userInfo.classList.add("hidden");
-        userEmailSpan.textContent = "";
       }
     });
 
-    // 登入 (email/password)
-    loginBtn.addEventListener('click', async () => {
+    // 登入登出
+    document.getElementById('login-btn').addEventListener('click', async () => {
       const email = document.getElementById('email').value;
       const password = document.getElementById('password').value;
-      if (!email || !password) {
-        alert("請輸入 email 與密碼");
-        return;
-      }
       try {
         await signInWithEmailAndPassword(auth, email, password);
         alert('登入成功！');
-      } catch (err) {
-        console.error("登入錯誤：", err);
-        alert('登入失敗：' + err.message);
+      } catch (error) {
+        alert('登入失敗：' + error.message);
       }
     });
-
-    logoutBtn.addEventListener('click', async () => {
-      try {
-        await signOut(auth);
-        alert('已登出');
-      } catch (err) {
-        console.error("登出錯誤：", err);
-      }
+    document.getElementById('logout-btn').addEventListener('click', async () => {
+      await signOut(auth);
+      alert('您已登出。');
     });
 
-    // ---------- 新增項目 (需登入) ----------
+    // 新增項目
+    const issueForm = document.getElementById('issueForm');
     issueForm.addEventListener('submit', async (e) => {
       e.preventDefault();
-      const issueName = document.getElementById('issueName').value?.trim();
-      if (!issueName) {
-        alert("請輸入損壞項目！");
-        return;
-      }
-      if (!currentUser) {
-        alert("請先登入！");
-        return;
-      }
+      const issueName = document.getElementById('issueName').value;
+      if (!issueName) return;
       try {
         await addDoc(collection(db, "issues"), {
           issueName,
           status: "未處理",
-          datePosted: serverTimestamp(),
           vendorReply: "",
+          vendorCompany: "",
           estRepairTime: "",
-          createdBy: currentUser.email || currentUser.uid
+          datePosted: serverTimestamp()
         });
         issueForm.reset();
-      } catch (err) {
-        console.error("新增文件錯誤：", err);
-        alert("新增失敗，請查看 console");
+      } catch (e) {
+        console.error("新增失敗：", e);
       }
     });
 
-    // ---------- 讀取資料：改為先把整個 collection 拉下來（避免 orderBy/where 在後端失敗） ----------
-    function startRealtimeListenAllIssues() {
-      // 取消舊監聽
-      if (unsubscribe) unsubscribe();
+    // 渲染
+    const issueList = document.getElementById('issueList');
+    const searchInput = document.getElementById('searchInput');
 
-      // 訂閱整個 collection（server-side 的排序過濾可能導致錯誤，故以 client-side 處理）
-      const colRef = collection(db, "issues");
-      unsubscribe = onSnapshot(colRef, (snapshot) => {
-        allIssuesData = snapshot.docs; // 保留 doc 物件
-        // 直接 render（在 render 裡會做 client-side 過濾與排序）
-        renderIssues(allIssuesData, searchInput.value);
-      }, (err) => {
-        console.error("onSnapshot 錯誤：", err);
-        issueList.innerHTML = `<p class="text-red-500">無法載入資料（請查看 console）</p>`;
-      });
-    }
+    const renderIssues = (issues, searchTerm = '') => {
+      const normalizedSearchTerm = searchTerm.toLowerCase().trim();
+      issueList.innerHTML = '';
+      const currentUser = auth.currentUser;
 
-    // ---------- render (client-side filter + sort + safe-check) ----------
-    function renderIssues(docs, searchTerm = "") {
-      const normalizedSearch = String(searchTerm || "").toLowerCase().trim();
-      issueList.innerHTML = "";
+      issues.forEach((doc) => {
+        const data = doc.data();
+        const id = doc.id;
 
-      // 先把 docs 轉為 {id, data} 並加上 safe 欄位
-      const items = docs.map(d => {
-        const data = d.data ? d.data() : {};
-        return { id: d.id, data };
-      });
+        // 搜尋過濾
+        if (!(normalizedSearchTerm === '' || 
+              data.issueName.toLowerCase().includes(normalizedSearchTerm) ||
+              (data.vendorReply && data.vendorReply.toLowerCase().includes(normalizedSearchTerm)))) return;
 
-      // 篩掉不符合 activeTab（若 activeTab === 'all' 則保留全部）
-      let filtered = items.filter(item => {
-        if (activeTab === 'all') return true;
-        // 若 status 欄位不存在視為空字串，不會符合任何狀態
-        return (String(item.data.status || "") === activeTab);
-      });
+        const waitingDaysHtml = data.status !== '已完成' && data.datePosted
+          ? `<p class="text-sm text-gray-500">等待天數：${Math.ceil((new Date() - data.datePosted.toDate()) / (1000*60*60*24))} 天</p>`
+          : '';
 
-      // 搜尋過濾（名稱或廠商回覆）
-      if (normalizedSearch !== "") {
-        filtered = filtered.filter(item => {
-          const name = String(item.data.issueName || "").toLowerCase();
-          const reply = String(item.data.vendorReply || "").toLowerCase();
-          return name.includes(normalizedSearch) || reply.includes(normalizedSearch);
-        });
-      }
+        const statusTag = `<span class="${statusBadge[data.status] || 'bg-gray-500 text-white px-2 py-1 rounded'}">${data.status}</span>`;
 
-      // 排序（client-side）：根據 datePosted（可能為 Timestamp 或不存在）
-      filtered.sort((a, b) => {
-        const ta = getTimestampMs(a.data.datePosted);
-        const tb = getTimestampMs(b.data.datePosted);
-        if (currentSort === 'desc') return tb - ta;
-        return ta - tb;
-      });
-
-      if (filtered.length === 0) {
-        issueList.innerHTML = `<p class="text-gray-500">目前沒有符合條件的資料</p>`;
-        return;
-      }
-
-      // 建立 DOM
-      filtered.forEach(item => {
-        const data = item.data || {};
-        const issueId = item.id;
-        const issueName = data.issueName || "(未命名)";
-        const datePostedStr = data.datePosted ? safeDateString(data.datePosted) : "無日期";
-        let waitingDaysHtml = '';
-        if (data.status !== '已完成' && data.datePosted) {
-          const diffDays = calcDaysFromTimestamp(data.datePosted);
-          waitingDaysHtml = `<p class="text-sm text-gray-500">等待天數：${diffDays} 天</p>`;
-        }
-
-        const badgeClass = statusBadgeClass(data.status);
-
-        const deleteBtnHtml = currentUser ? `<button class="delete-btn bg-red-500 hover:bg-red-600 text-white px-3 py-1 rounded" data-id="${issueId}">刪除</button>` : '';
-
-        const itemEl = document.createElement('div');
-        itemEl.className = "bg-white shadow rounded p-4";
-        itemEl.innerHTML = `
+        const issueItem = document.createElement('div');
+        issueItem.className = "bg-white shadow rounded p-4";
+        issueItem.innerHTML = `
           <div class="flex justify-between items-center mb-2">
-            <h3 class="font-bold text-lg">${escapeHtml(issueName)}</h3>
-            <span class="${badgeClass}">${escapeHtml(String(data.status || ''))}</span>
+            <h3 class="font-bold text-lg">${data.issueName}</h3>
+            ${statusTag}
           </div>
-          <p class="text-sm text-gray-600">登載日期：${escapeHtml(datePostedStr)}</p>
+          <p class="text-sm text-gray-600">登載日期：${data.datePosted ? data.datePosted.toDate().toLocaleString('zh-TW') : '載入中...'}</p>
           ${waitingDaysHtml}
-          <p class="mt-2"><strong>廠商回覆：</strong>${escapeHtml(String(data.vendorReply || '尚未回覆'))}</p>
+          <p class="mt-2"><strong>廠商回覆：</strong>${data.vendorReply || '尚未回覆'}</p>
           <label class="block mt-2"><strong>預計維修時間：</strong></label>
-          <input type="date" data-id="${issueId}" value="${escapeHtml(String(data.estRepairTime || ''))}" class="border rounded px-2 py-1 w-full">
+          <input type="date" data-id="${id}" value="${data.estRepairTime}" class="border rounded px-2 py-1 w-full">
+
           <div class="vendor-form mt-3 space-y-2">
-            <textarea data-id="${issueId}" class="border rounded px-3 py-2 w-full" placeholder="廠商回覆..." rows="3">${escapeHtml(String(data.vendorReply || ''))}</textarea>
-            <select class="status-select border rounded px-2 py-1 w-full" data-id="${issueId}">
-              <option value="未處理" ${data.status === '未處理' ? 'selected' : ''}>未處理</option>
-              <option value="維修中" ${data.status === '維修中' ? 'selected' : ''}>維修中</option>
-              <option value="待料中" ${data.status === '待料中' ? 'selected' : ''}>待料中</option>
-              <option value="已完成" ${data.status === '已完成' ? 'selected' : ''}>已完成</option>
+            <textarea data-id="${id}" class="border rounded px-3 py-2 w-full" placeholder="廠商回覆..." rows="3">${data.vendorReply || ''}</textarea>
+
+            <select class="status-select border rounded px-2 py-1 w-full" data-id="${id}">
+              <option value="未處理" ${data.status==='未處理'?'selected':''}>未處理</option>
+              <option value="維修中" ${data.status==='維修中'?'selected':''}>維修中</option>
+              <option value="待料中" ${data.status==='待料中'?'selected':''}>待料中</option>
+              <option value="已完成" ${data.status==='已完成'?'selected':''}>已完成</option>
             </select>
+
+            <select class="vendor-company-select border rounded px-2 py-1 w-full" data-id="${id}">
+              <option value="">請選擇承辦公司</option>
+              <option value="廷澧室內裝修工程有限公司" ${data.vendorCompany==='廷澧室內裝修工程有限公司'?'selected':''}>廷澧室內裝修工程有限公司</option>
+              <option value="動能機電工程股份有限公司" ${data.vendorCompany==='動能機電工程股份有限公司'?'selected':''}>動能機電工程股份有限公司</option>
+              <option value="尚順能源科技有限公司" ${data.vendorCompany==='尚順能源科技有限公司'?'selected':''}>尚順能源科技有限公司</option>
+              <option value="安庭工程有限公司" ${data.vendorCompany==='安庭工程有限公司'?'selected':''}>安庭工程有限公司</option>
+            </select>
+
             <div class="flex gap-2">
-              <button class="update-btn bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded" data-id="${issueId}">更新</button>
-              ${deleteBtnHtml}
+              <button class="update-btn bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded" data-id="${id}">更新</button>
+              ${currentUser ? `<button class="delete-btn bg-red-500 hover:bg-red-600 text-white px-3 py-1 rounded" data-id="${id}">刪除</button>` : ''}
             </div>
           </div>
         `;
-        issueList.appendChild(itemEl);
+        issueList.appendChild(issueItem);
       });
-    }
+    };
 
-    // ---------- helpers ----------
-    function getTimestampMs(ts) {
-      if (!ts) return 0;
-      // Firestore Timestamp 有 toDate()
-      try {
-        if (typeof ts.toDate === 'function') return ts.toDate().getTime();
-        // fallback: seconds property
-        if (ts.seconds) return ts.seconds * 1000;
-      } catch (e) { /* ignore */ }
-      return 0;
-    }
-    function safeDateString(ts) {
-      try {
-        if (!ts) return '無日期';
-        if (typeof ts.toDate === 'function') return ts.toDate().toLocaleString('zh-TW');
-        if (ts.seconds) return new Date(ts.seconds * 1000).toLocaleString('zh-TW');
-      } catch (e) {}
-      return '無日期';
-    }
-    function calcDaysFromTimestamp(ts) {
-      const ms = getTimestampMs(ts);
-      if (!ms) return 0;
-      const now = Date.now();
-      return Math.ceil((now - ms) / (1000 * 60 * 60 * 24));
-    }
-    function statusBadgeClass(status) {
-      if (status === '未處理') return statusBadge['未處理'];
-      if (status === '維修中') return statusBadge['維修中'];
-      if (status === '待料中') return statusBadge['待料中'];
-      if (status === '已完成') return statusBadge['已完成'];
-      return 'bg-gray-500 text-white px-2 py-1 rounded text-sm';
-    }
-    // 簡單的 html escape，避免插入惡意內容
-    function escapeHtml(s) {
-      return String(s)
-        .replaceAll('&', '&amp;')
-        .replaceAll('<', '&lt;')
-        .replaceAll('>', '&gt;')
-        .replaceAll('"', '&quot;')
-        .replaceAll("'", '&#39;');
-    }
-
-    // ---------- tab 切換（更新樣式 + 重新 render） ----------
-    statusTabs.addEventListener('click', (e) => {
-      const btn = e.target.closest('.tab-btn');
-      if (!btn) return;
-      // 更新 activeTab
-      activeTab = btn.dataset.status || 'all';
-
-      // 樣式切換
-      document.querySelectorAll('.tab-btn').forEach(b => {
-        b.classList.remove('bg-white','active');
-        b.classList.add('bg-gray-200');
+    // 實時監聽
+    const setupRealtimeListener = (statusFilter, sortOrder) => {
+      if (unsubscribe) unsubscribe();
+      let q;
+      if (statusFilter==='all') {
+        q = query(collection(db, "issues"), orderBy("datePosted", sortOrder));
+      } else {
+        q = query(collection(db, "issues"), where("status","==",statusFilter), orderBy("datePosted", sortOrder));
+      }
+      unsubscribe = onSnapshot(q, snapshot => {
+        allIssuesData = snapshot.docs;
+        renderIssues(allIssuesData, searchInput.value);
       });
-      btn.classList.remove('bg-gray-200');
-      btn.classList.add('bg-white','active');
+    };
 
-      // 重新 render（使用 client-side 過濾）
-      renderIssues(allIssuesData, searchInput.value);
-    });
-
-    // ---------- 排序切換 ----------
-    sortSelect.addEventListener('change', (e) => {
-      currentSort = e.target.value === 'asc' ? 'asc' : 'desc';
-      renderIssues(allIssuesData, searchInput.value);
-    });
-
-    // ---------- 搜尋 ----------
-    searchInput.addEventListener('input', (e) => {
-      renderIssues(allIssuesData, e.target.value);
-    });
-
-    // ---------- 更新 / 刪除 的集中處理（事件代理） ----------
-    issueList.addEventListener('click', async (e) => {
-      const target = e.target;
-      const issueId = target.dataset?.id;
-      if (!issueId) return;
-
-      const issueRef = doc(db, "issues", issueId);
-
-      // 更新
-      if (target.classList.contains('update-btn')) {
-        try {
-          const vendorReplyEl = document.querySelector(`textarea[data-id="${issueId}"]`);
-          const estRepairEl = document.querySelector(`input[data-id="${issueId}"]`);
-          const statusSelectEl = document.querySelector(`select[data-id="${issueId}"]`);
-          const vendorReply = vendorReplyEl ? vendorReplyEl.value : '';
-          const estRepairTime = estRepairEl ? estRepairEl.value : '';
-          const newStatus = statusSelectEl ? statusSelectEl.value : '';
-
-          await updateDoc(issueRef, {
-            vendorReply,
-            estRepairTime,
-            status: newStatus,
-            updatedBy: currentUser ? (currentUser.email || currentUser.uid) : null,
-            updatedAt: serverTimestamp()
-          });
-          // onSnapshot 會自動更新 UI
-        } catch (err) {
-          console.error("更新失敗：", err);
-          alert("更新失敗，請查看 console");
-        }
-      }
-
-      // 刪除
-      if (target.classList.contains('delete-btn')) {
-        if (!currentUser) {
-          alert("您沒有刪除權限，請先登入。");
-          return;
-        }
-        if (!confirm("您確定要刪除這個維修項目嗎？此操作無法復原")) return;
-        try {
-          await deleteDoc(issueRef);
-        } catch (err) {
-          console.error("刪除失敗：", err);
-          alert("刪除失敗，請查看 console");
-        }
-      }
-    });
-
-    // ---------- 初始啟動監聽 ----------
-    startRealtimeListenAllIssues();
-
-  </script>
-
-</body>
-</html>
+    // 分頁切換
+    document.getElementById('statusTabs').addEventListener('click', (e)=>{
+      if(e.target.matches('.tab
