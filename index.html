@@ -8,7 +8,6 @@
 </head>
 <body class="bg-gray-100 p-6">
 
-  <!-- 登入區塊 -->
   <div id="auth-container" class="flex justify-end mb-4">
     <div id="login-form" class="space-x-2">
       <input type="email" id="email" placeholder="電子郵件" class="border rounded px-2 py-1">
@@ -23,7 +22,6 @@
 
   <hr class="mb-6">
 
-  <!-- 新增項目 -->
   <h2 class="text-xl font-bold mb-2">新增維修項目</h2>
   <form id="issueForm" class="mb-6 space-y-2">
     <input type="text" id="issueName" name="issueName" required class="border rounded px-3 py-2 w-full" placeholder="輸入損壞項目">
@@ -32,7 +30,6 @@
 
   <hr class="mb-6">
 
-  <!-- 分頁 + 排序 -->
   <div class="flex flex-col md:flex-row md:items-center md:justify-between mb-4 gap-2">
     <div id="statusTabs" class="flex space-x-2 overflow-x-auto">
       <button class="tab-btn bg-white border px-4 py-2 rounded-t-md active" data-status="all">所有項目</button>
@@ -47,12 +44,10 @@
     </select>
   </div>
 
-  <!-- 搜尋 -->
   <div class="mb-4">
     <input type="text" id="searchInput" placeholder="搜尋項目名稱或廠商回覆..." class="border rounded w-full px-3 py-2">
   </div>
 
-  <!-- 維修列表 -->
   <div id="issueList" class="space-y-4"></div>
 
   <script type="module">
@@ -206,6 +201,13 @@
             <option value="">請選擇公司</option>
             ${vendorCompanies.map(c=>`<option value="${escapeHtml(c)}" ${data.vendorCompany===c?'selected':''}>${escapeHtml(c)}</option>`).join('')}
           </select>
+          <label class="block mt-2"><strong>目前狀態：</strong></label>
+          <select class="status-select border rounded px-2 py-1 w-full" data-id="${id}">
+            <option value="未處理" ${data.status === '未處理' ? 'selected' : ''}>未處理</option>
+            <option value="維修中" ${data.status === '維修中' ? 'selected' : ''}>維修中</option>
+            <option value="待料中" ${data.status === '待料中' ? 'selected' : ''}>待料中</option>
+            <option value="已完成" ${data.status === '已完成' ? 'selected' : ''}>已完成</option>
+          </select>
           <div class="flex gap-2 mt-3">
             <button class="update-btn bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded" data-id="${id}">更新</button>
             ${currentUser?`<button class="delete-btn bg-red-500 hover:bg-red-600 text-white px-3 py-1 rounded" data-id="${id}">刪除</button>`:''}
@@ -234,10 +236,24 @@
         const replyEl=document.querySelector(`textarea[data-id="${id}"]`);
         const estEl=document.querySelector(`input[data-id="${id}"]`);
         const companyEl=document.querySelector(`select[data-id="${id}"]`);
+        const statusEl=document.querySelector(`select.status-select[data-id="${id}"]`); // 取得狀態選單元素
+        
         const reply = replyEl?.value||'';
         const est = estEl?.value||'';
         const company = companyEl?.value||'';
-        try{ await updateDoc(ref,{vendorReply:reply,estRepairTime:est,vendorCompany:company,updatedBy:currentUser?currentUser.email||currentUser.uid:null,updatedAt:serverTimestamp()}); }
+        const newStatus = statusEl?.value||''; // 取得新的狀態值
+
+        try{
+          await updateDoc(ref,{
+            vendorReply:reply,
+            estRepairTime:est,
+            vendorCompany:company,
+            status: newStatus, // 加入狀態到更新資料中
+            updatedBy:currentUser?currentUser.email||currentUser.uid:null,
+            updatedAt:serverTimestamp()
+          });
+          alert('更新成功');
+        }
         catch(err){ console.error(err); alert('更新失敗'); }
       }
       if(target.classList.contains('delete-btn')){
