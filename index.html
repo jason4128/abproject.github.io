@@ -100,9 +100,9 @@
     let activeTab = "all";
     let currentUser = null;
 
-    onAuthStateChanged(auth, user => {
+    onAuthStateChanged(auth, (user) => {
       currentUser = user;
-      if(user){
+      if (user) {
         loginForm.classList.add("hidden");
         userInfo.classList.remove("hidden");
         userEmailSpan.textContent = user.email || user.uid;
@@ -111,86 +111,106 @@
         userInfo.classList.add("hidden");
         userEmailSpan.textContent = "";
       }
+      if (unsubscribe) unsubscribe();
+      startRealtimeListenAllIssues();
     });
 
     loginBtn.addEventListener('click', async () => {
       const email = document.getElementById('email').value;
       const password = document.getElementById('password').value;
-      if(!email||!password){ alert("請輸入 email 與密碼"); return; }
-      try{ await signInWithEmailAndPassword(auth,email,password); alert('登入成功！'); }
-      catch(err){ console.error(err); alert('登入失敗：'+err.message); }
+      if (!email || !password) { alert("請輸入 email 與密碼"); return; }
+      try {
+        await signInWithEmailAndPassword(auth, email, password);
+        alert('登入成功！');
+      } catch (err) {
+        console.error(err);
+        alert('登入失敗：' + err.message);
+      }
     });
 
     logoutBtn.addEventListener('click', async () => {
-      try{ await signOut(auth); alert('已登出'); }
-      catch(err){ console.error(err); }
+      try {
+        await signOut(auth);
+        alert('已登出');
+      } catch (err) {
+        console.error(err);
+      }
     });
 
-    issueForm.addEventListener('submit', async e => {
+    issueForm.addEventListener('submit', async (e) => {
       e.preventDefault();
       const issueName = document.getElementById('issueName').value.trim();
-      if(!issueName){ alert("請輸入損壞項目"); return; }
-      if(!currentUser){ alert("請先登入！"); return; }
-      try{
-        await addDoc(collection(db,"issues"),{
+      if (!issueName) { alert("請輸入損壞項目"); return; }
+      if (!currentUser) { alert("請先登入！"); return; }
+      try {
+        const issueId = Date.now().toString(); // 使用時間戳作為臨時 issueId
+        await addDoc(collection(db, "issues"), {
+          issueId,
           issueName,
-          status:"未處理",
+          status: "未處理",
           datePosted: serverTimestamp(),
-          vendorReply:"",
-          estRepairTime:"",
-          vendorCompany:"",
+          vendorReply: "",
+          estRepairTime: "",
+          vendorCompany: "",
           createdBy: currentUser.email || currentUser.uid
         });
         issueForm.reset();
-      } catch(err){ console.error(err); alert("新增失敗"); }
+        alert('維修項目新增成功！');
+      } catch (err) {
+        console.error(err);
+        alert('新增失敗：' + err.message);
+      }
     });
 
-    function getTimestampMs(ts){
-      if(!ts) return 0;
-      try{ if(typeof ts.toDate==='function') return ts.toDate().getTime(); if(ts.seconds) return ts.seconds*1000; } catch(e){}
+    function getTimestampMs(ts) {
+      if (!ts) return 0;
+      try { if (typeof ts.toDate === 'function') return ts.toDate().getTime(); if (ts.seconds) return ts.seconds * 1000; } catch (e) {}
       return 0;
     }
 
-    function calcDaysFromTimestamp(ts){
+    function calcDaysFromTimestamp(ts) {
       const ms = getTimestampMs(ts);
-      if(!ms) return 0;
+      if (!ms) return 0;
       const now = Date.now();
-      return Math.ceil((now-ms)/(1000*60*60*24));
+      return Math.ceil((now - ms) / (1000 * 60 * 60 * 24));
     }
 
-    function escapeHtml(s){ return String(s||'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;').replaceAll("'","&#39;"); }
+    function escapeHtml(s) { return String(s || '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;').replaceAll("'", '&#39;'); }
 
-    function renderIssues(){
-      issueList.innerHTML='';
-      let items = allIssuesData.map(d=>({id:d.id,data:d.data()}));
-      if(activeTab!=='all') items = items.filter(i=>i.data.status===activeTab);
+    function renderIssues() {
+      issueList.innerHTML = '';
+      let items = allIssuesData.map(d => ({ id: d.id, data: d.data() }));
+      if (activeTab !== 'all') items = items.filter(i => i.data.status === activeTab);
       const search = searchInput.value.toLowerCase().trim();
-      if(search!=='') items = items.filter(i=>{
-        return (i.data.issueName||'').toLowerCase().includes(search) ||
-               (i.data.vendorReply||'').toLowerCase().includes(search);
-      });
-      items.sort((a,b)=>{
-        const ta=getTimestampMs(a.data.datePosted);
-        const tb=getTimestampMs(b.data.datePosted);
-        return currentSort==='asc'?ta-tb:tb-ta;
+      if (search !== '') items = items.filter(i => 
+        (i.data.issueName || '').toLowerCase().includes(search) ||
+        (i.data.vendorReply || '').toLowerCase().includes(search)
+      );
+      items.sort((a, b) => {
+        const ta = getTimestampMs(a.data.datePosted);
+        const tb = getTimestampMs(b.data.datePosted);
+        return currentSort === 'asc' ? ta - tb : tb - ta;
       });
 
-      if(items.length===0){ issueList.innerHTML='<p class="text-gray-500">目前沒有符合條件的資料</p>'; return; }
+      if (items.length === 0) {
+        issueList.innerHTML = '<p class="text-gray-500">目前沒有符合條件的資料</p>';
+        return;
+      }
 
-      items.forEach(item=>{
-        const data=item.data;
-        const id=item.id;
-        const waitingDays = data.datePosted && data.status!=='已完成' ? `<p class="text-sm text-gray-500">等待天數：${calcDaysFromTimestamp(data.datePosted)} 天</p>` : '';
-        const badge = statusBadge[data.status]||'bg-gray-500 text-white px-2 py-1 rounded text-sm';
+      items.forEach(item => {
+        const data = item.data;
+        const id = item.id;
+        const waitingDays = data.datePosted && data.status !== '已完成' ? `<p class="text-sm text-gray-500">等待天數：${calcDaysFromTimestamp(data.datePosted)} 天</p>` : '';
+        const badge = statusBadge[data.status] || 'bg-gray-500 text-white px-2 py-1 rounded text-sm';
 
         const itemEl = document.createElement('div');
-        itemEl.className="bg-white shadow rounded p-4";
-        itemEl.innerHTML=`
+        itemEl.className = "bg-white shadow rounded p-4";
+        itemEl.innerHTML = `
           <div class="flex justify-between items-center mb-2">
             <h3 class="font-bold text-lg">${escapeHtml(data.issueName)}</h3>
             <span class="${badge}">${escapeHtml(data.status)}</span>
           </div>
-          <p class="text-sm text-gray-600">登載日期：${data.datePosted?.toDate?data.datePosted.toDate().toLocaleString('zh-TW'):'無日期'}</p>
+          <p class="text-sm text-gray-600">登載日期：${data.datePosted?.toDate ? data.datePosted.toDate().toLocaleString('zh-TW') : '無日期'}</p>
           ${waitingDays}
           <label class="block mt-2"><strong>廠商回覆：</strong></label>
           <textarea data-id="${id}" class="border rounded px-3 py-2 w-full" placeholder="廠商回覆..." rows="3">${escapeHtml(data.vendorReply)}</textarea>
@@ -199,7 +219,7 @@
           <label class="block mt-2"><strong>承辦公司：</strong></label>
           <select class="vendor-company-select border rounded px-2 py-1 w-full" data-id="${id}">
             <option value="">請選擇公司</option>
-            ${vendorCompanies.map(c=>`<option value="${escapeHtml(c)}" ${data.vendorCompany===c?'selected':''}>${escapeHtml(c)}</option>`).join('')}
+            ${vendorCompanies.map(c => `<option value="${escapeHtml(c)}" ${data.vendorCompany === c ? 'selected' : ''}>${escapeHtml(c)}</option>`).join('')}
           </select>
           <label class="block mt-2"><strong>目前狀態：</strong></label>
           <select class="status-select border rounded px-2 py-1 w-full" data-id="${id}">
@@ -210,64 +230,73 @@
           </select>
           <div class="flex gap-2 mt-3">
             <button class="update-btn bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded" data-id="${id}">更新</button>
-            ${currentUser?`<button class="delete-btn bg-red-500 hover:bg-red-600 text-white px-3 py-1 rounded" data-id="${id}">刪除</button>`:''}
+            ${currentUser ? `<button class="delete-btn bg-red-500 hover:bg-red-600 text-white px-3 py-1 rounded" data-id="${id}">刪除</button>` : ''}
           </div>
         `;
         issueList.appendChild(itemEl);
       });
     }
 
-    statusTabs.addEventListener('click', e=>{
-      const btn = e.target.closest('.tab-btn'); if(!btn) return;
-      activeTab = btn.dataset.status||'all';
-      document.querySelectorAll('.tab-btn').forEach(b=>{ b.classList.remove('bg-white','active'); b.classList.add('bg-gray-200'); });
-      btn.classList.remove('bg-gray-200'); btn.classList.add('bg-white','active');
+    statusTabs.addEventListener('click', (e) => {
+      const btn = e.target.closest('.tab-btn');
+      if (!btn) return;
+      activeTab = btn.dataset.status || 'all';
+      document.querySelectorAll('.tab-btn').forEach(b => { b.classList.remove('bg-white', 'active'); b.classList.add('bg-gray-200'); });
+      btn.classList.remove('bg-gray-200');
+      btn.classList.add('bg-white', 'active');
       renderIssues();
     });
 
-    sortSelect.addEventListener('change', e=>{ currentSort=e.target.value==='asc'?'asc':'desc'; renderIssues(); });
-    searchInput.addEventListener('input', e=>{ renderIssues(); });
+    sortSelect.addEventListener('change', (e) => { currentSort = e.target.value === 'asc' ? 'asc' : 'desc'; renderIssues(); });
+    searchInput.addEventListener('input', () => { renderIssues(); });
 
-    issueList.addEventListener('click', async e=>{
+    issueList.addEventListener('click', async (e) => {
       const target = e.target;
-      const id = target.dataset?.id; if(!id) return;
-      const ref = doc(db,"issues",id);
-      if(target.classList.contains('update-btn')){
-        const replyEl=document.querySelector(`textarea[data-id="${id}"]`);
-        const estEl=document.querySelector(`input[data-id="${id}"]`);
-        const companyEl=document.querySelector(`select[data-id="${id}"]`);
-        const statusEl=document.querySelector(`select.status-select[data-id="${id}"]`); // 取得狀態選單元素
+      const id = target.dataset?.id;
+      if (!id) return;
+      const ref = doc(db, "issues", id);
+      if (target.classList.contains('update-btn')) {
+        const replyEl = document.querySelector(`textarea[data-id="${id}"]`);
+        const estEl = document.querySelector(`input[data-id="${id}"]`);
+        const companyEl = document.querySelector(`select[data-id="${id}"]`);
+        const statusEl = document.querySelector(`select.status-select[data-id="${id}"]`);
         
-        const reply = replyEl?.value||'';
-        const est = estEl?.value||'';
-        const company = companyEl?.value||'';
-        const newStatus = statusEl?.value||''; // 取得新的狀態值
+        const reply = replyEl?.value || '';
+        const est = estEl?.value || '';
+        const company = companyEl?.value || '';
+        const newStatus = statusEl?.value || '';
 
-        try{
-          await updateDoc(ref,{
-            vendorReply:reply,
-            estRepairTime:est,
-            vendorCompany:company,
-            status: newStatus, // 加入狀態到更新資料中
-            updatedBy:currentUser?currentUser.email||currentUser.uid:null,
-            updatedAt:serverTimestamp()
+        try {
+          await updateDoc(ref, {
+            vendorReply: reply,
+            estRepairTime: est,
+            vendorCompany: company,
+            status: newStatus,
+            updatedBy: currentUser ? currentUser.email || currentUser.uid : null,
+            updatedAt: serverTimestamp()
           });
           alert('更新成功');
+        } catch (err) {
+          console.error(err);
+          alert('更新失敗：' + err.message);
         }
-        catch(err){ console.error(err); alert('更新失敗'); }
       }
-      if(target.classList.contains('delete-btn')){
-        if(!currentUser){ alert('請先登入'); return; }
-        if(!confirm('確定刪除？')) return;
-        try{ await deleteDoc(ref); } catch(err){ console.error(err); alert('刪除失敗'); }
+      if (target.classList.contains('delete-btn')) {
+        if (!currentUser) { alert('請先登入'); return; }
+        if (!confirm('確定刪除？')) return;
+        try { await deleteDoc(ref); } catch (err) { console.error(err); alert('刪除失敗：' + err.message); }
       }
     });
 
-    function startRealtimeListenAllIssues(){
-      if(unsubscribe) unsubscribe();
-      unsubscribe = onSnapshot(collection(db,"issues"), snapshot=>{
-        allIssuesData=snapshot.docs; renderIssues();
-      }, err=>{ console.error(err); issueList.innerHTML='<p class="text-red-500">無法載入資料</p>'; });
+    function startRealtimeListenAllIssues() {
+      if (unsubscribe) unsubscribe();
+      unsubscribe = onSnapshot(collection(db, "issues"), (snapshot) => {
+        allIssuesData = snapshot.docs;
+        renderIssues();
+      }, (err) => {
+        console.error(err);
+        issueList.innerHTML = '<p class="text-red-500">無法載入資料</p>';
+      });
     }
 
     startRealtimeListenAllIssues();
