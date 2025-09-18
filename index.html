@@ -26,8 +26,7 @@
   <!-- 新增項目 -->
   <h2 class="text-xl font-bold mb-2">新增維修項目</h2>
   <form id="issueForm" class="mb-6 space-y-2">
-    <input type="text" id="issueName" name="issueName" required 
-      class="border rounded px-3 py-2 w-full" placeholder="輸入損壞項目">
+    <input type="text" id="issueName" name="issueName" required class="border rounded px-3 py-2 w-full" placeholder="輸入損壞項目">
     <button type="submit" class="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded">新增項目</button>
   </form>
 
@@ -50,222 +49,212 @@
 
   <!-- 搜尋 -->
   <div class="mb-4">
-    <input type="text" id="searchInput" placeholder="搜尋項目名稱或廠商回覆..."
-      class="border rounded w-full px-3 py-2">
+    <input type="text" id="searchInput" placeholder="搜尋項目名稱或廠商回覆..." class="border rounded w-full px-3 py-2">
   </div>
 
   <!-- 維修列表 -->
   <div id="issueList" class="space-y-4"></div>
 
-<script type="module">
-import { initializeApp } from "https://www.gstatic.com/firebasejs/10.4.0/firebase-app.js";
-import { getFirestore, collection, onSnapshot, addDoc, doc, updateDoc, deleteDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.4.0/firebase-firestore.js";
-import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.4.0/firebase-auth.js";
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.4.0/firebase-app.js";
+    import { getFirestore, collection, addDoc, onSnapshot, doc, updateDoc, deleteDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.4.0/firebase-firestore.js";
+    import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.4.0/firebase-auth.js";
 
-// Firebase config
-const firebaseConfig = {
-  apiKey: "AIzaSyAJmR6Cj7RXO7fjzwvRUAto_ThEdbDJoXE",
-  authDomain: "ab-project-1e438.firebaseapp.com",
-  projectId: "ab-project-1e438",
-  storageBucket: "ab-project-1e438.firebasestorage.app",
-  messagingSenderId: "76552910163",
-  appId: "1:76552910163:web:7d0a40e84c52a7bccb9da6",
-  measurementId: "G-PBJR6HGK4N"
-};
+    const firebaseConfig = {
+      apiKey: "AIzaSyAJmR6Cj7RXO7fjzwvRUAto_ThEdbDJoXE",
+      authDomain: "ab-project-1e438.firebaseapp.com",
+      projectId: "ab-project-1e438",
+      storageBucket: "ab-project-1e438.firebasestorage.app",
+      messagingSenderId: "76552910163",
+      appId: "1:76552910163:web:7d0a40e84c52a7bccb9da6",
+      measurementId: "G-PBJR6HGK4N"
+    };
 
-const app = initializeApp(firebaseConfig);
-const db = getFirestore(app);
-const auth = getAuth(app);
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+    const auth = getAuth(app);
 
-// UI
-const loginForm = document.getElementById('login-form');
-const userInfo = document.getElementById('user-info');
-const userEmailSpan = document.getElementById('user-email');
-const loginBtn = document.getElementById('login-btn');
-const logoutBtn = document.getElementById('logout-btn');
-const issueForm = document.getElementById('issueForm');
-const issueList = document.getElementById('issueList');
-const searchInput = document.getElementById('searchInput');
-const statusTabs = document.getElementById('statusTabs');
-const sortSelect = document.getElementById('sortSelect');
+    const loginForm = document.getElementById('login-form');
+    const userInfo = document.getElementById('user-info');
+    const userEmailSpan = document.getElementById('user-email');
+    const loginBtn = document.getElementById('login-btn');
+    const logoutBtn = document.getElementById('logout-btn');
+    const issueForm = document.getElementById('issueForm');
+    const issueList = document.getElementById('issueList');
+    const searchInput = document.getElementById('searchInput');
+    const statusTabs = document.getElementById('statusTabs');
+    const sortSelect = document.getElementById('sortSelect');
 
-const statusBadge = {
-  "未處理": "bg-red-500 text-white px-2 py-1 rounded text-sm",
-  "維修中": "bg-yellow-500 text-white px-2 py-1 rounded text-sm",
-  "待料中": "bg-purple-600 text-white px-2 py-1 rounded text-sm",
-  "已完成": "bg-green-600 text-white px-2 py-1 rounded text-sm"
-};
+    const statusBadge = {
+      "未處理": "bg-red-500 text-white px-2 py-1 rounded text-sm",
+      "維修中": "bg-yellow-500 text-white px-2 py-1 rounded text-sm",
+      "待料中": "bg-purple-600 text-white px-2 py-1 rounded text-sm",
+      "已完成": "bg-green-600 text-white px-2 py-1 rounded text-sm"
+    };
 
-const vendorCompanies = [
-  "廷澧室內裝修工程有限公司",
-  "動能機電工程股份有限公司",
-  "尚順能源科技有限公司",
-  "安庭工程有限公司"
-];
+    const vendorCompanies = [
+      "廷澧室內裝修工程有限公司",
+      "動能機電工程股份有限公司",
+      "尚順能源科技有限公司",
+      "安庭工程有限公司"
+    ];
 
-let allIssuesData = [];
-let unsubscribe = null;
-let currentSort = "desc";
-let activeTab = "all";
-let currentUser = null;
+    let allIssuesData = [];
+    let unsubscribe = null;
+    let currentSort = "desc";
+    let activeTab = "all";
+    let currentUser = null;
 
-// Auth state
-onAuthStateChanged(auth,user=>{
-  currentUser = user;
-  if(user){
-    loginForm.classList.add("hidden");
-    userInfo.classList.remove("hidden");
-    userEmailSpan.textContent = user.email || user.uid;
-  }else{
-    loginForm.classList.remove("hidden");
-    userInfo.classList.add("hidden");
-    userEmailSpan.textContent = '';
-  }
-});
-
-// 登入登出
-loginBtn.addEventListener('click',async ()=>{
-  const email=document.getElementById('email').value;
-  const password=document.getElementById('password').value;
-  try{ await signInWithEmailAndPassword(auth,email,password); alert('登入成功'); }
-  catch(e){ alert('登入失敗：'+e.message); }
-});
-logoutBtn.addEventListener('click',async ()=>{ await signOut(auth); alert('已登出'); });
-
-// 新增項目
-issueForm.addEventListener('submit', async e=>{
-  e.preventDefault();
-  const issueName=document.getElementById('issueName').value.trim();
-  if(!issueName){ alert("請輸入損壞項目"); return; }
-  if(!currentUser){ alert("請先登入！"); return; }
-  try{
-    await addDoc(collection(db,"issues"),{
-      issueName,
-      status:"未處理",
-      datePosted:serverTimestamp(),
-      vendorReply:"",
-      estRepairTime:"",
-      createdBy: currentUser.email||currentUser.uid
+    onAuthStateChanged(auth, user => {
+      currentUser = user;
+      if(user){
+        loginForm.classList.add("hidden");
+        userInfo.classList.remove("hidden");
+        userEmailSpan.textContent = user.email || user.uid;
+      } else {
+        loginForm.classList.remove("hidden");
+        userInfo.classList.add("hidden");
+        userEmailSpan.textContent = "";
+      }
     });
-    issueForm.reset();
-  }catch(e){ console.error(e); alert("新增失敗"); }
-});
 
-// 監聽資料
-function startRealtimeListen(){
-  if(unsubscribe) unsubscribe();
-  unsubscribe=onSnapshot(collection(db,"issues"), snapshot=>{
-    allIssuesData = snapshot.docs;
-    renderIssues();
-  });
-}
-
-// 渲染列表
-function renderIssues(){
-  issueList.innerHTML='';
-  let filtered = allIssuesData.map(d=>({id:d.id,data:d.data()}));
-
-  if(activeTab!=='all') filtered = filtered.filter(i=>i.data.status===activeTab);
-
-  const search = searchInput.value.toLowerCase().trim();
-  if(search!=='') filtered = filtered.filter(i=>{
-    return (i.data.issueName||'').toLowerCase().includes(search) ||
-           (i.data.vendorReply||'').toLowerCase().includes(search);
-  });
-
-  filtered.sort((a,b)=>{
-    const ta=a.data.datePosted?.toDate ? a.data.datePosted.toDate().getTime():0;
-    const tb=b.data.datePosted?.toDate ? b.data.datePosted.toDate().getTime():0;
-    return currentSort==='desc'? tb-ta:ta-tb;
-  });
-
-  if(filtered.length===0){ issueList.innerHTML='<p class="text-gray-500">目前沒有符合條件的資料</p>'; return; }
-
-  filtered.forEach(item=>{
-    const data=item.data;
-    const issueId=item.id;
-    const badgeClass=statusBadge[data.status]||'bg-gray-500 text-white px-2 py-1 rounded text-sm';
-    const dateStr = data.datePosted?.toDate ? data.datePosted.toDate().toLocaleString('zh-TW'):'無日期';
-
-    const div=document.createElement('div');
-    div.className="bg-white shadow rounded p-4";
-    div.innerHTML=`
-      <div class="flex justify-between items-center mb-2">
-        <h3 class="font-bold text-lg">${data.issueName||'(未命名)'}</h3>
-        <span class="${badgeClass}">${data.status||''}</span>
-      </div>
-      <p class="text-sm text-gray-600">登載日期：${dateStr}</p>
-      <label class="block mt-2"><strong>預計維修時間：</strong></label>
-      <input type="date" data-id="${issueId}" value="${data.estRepairTime||''}" class="border rounded px-2 py-1 w-full">
-      <div class="vendor-form mt-2 space-y-2">
-        <textarea data-id="${issueId}" class="border rounded px-3 py-2 w-full" placeholder="廠商回覆..." rows="3">${data.vendorReply||''}</textarea>
-        <select class="vendor-select border rounded px-2 py-1 w-full" data-id="${issueId}">
-          ${vendorCompanies.map(c=>`<option value="${c}" ${data.vendorCompany===c?'selected':''}>${c}</option>`).join('')}
-        </select>
-        <select class="status-select border rounded px-2 py-1 w-full" data-id="${issueId}">
-          <option value="未處理" ${data.status==='未處理'?'selected':''}>未處理</option>
-          <option value="維修中" ${data.status==='維修中'?'selected':''}>維修中</option>
-          <option value="待料中" ${data.status==='待料中'?'selected':''}>待料中</option>
-          <option value="已完成" ${data.status==='已完成'?'selected':''}>已完成</option>
-        </select>
-        <div class="flex gap-2 mt-1">
-          <button class="update-btn bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded" data-id="${issueId}">更新</button>
-          ${currentUser?`<button class="delete-btn bg-red-500 hover:bg-red-600 text-white px-3 py-1 rounded" data-id="${issueId}">刪除</button>`:''}
-        </div>
-      </div>
-    `;
-    issueList.appendChild(div);
-  });
-}
-
-// 事件代理更新刪除
-issueList.addEventListener('click', async e=>{
-  const id=e.target.dataset?.id;
-  if(!id) return;
-  const ref=doc(db,"issues",id);
-
-  // 更新
-  if(e.target.classList.contains('update-btn')){
-    const textarea=document.querySelector(`textarea[data-id="${id}"]`);
-    const dateInput=document.querySelector(`input[data-id="${id}"]`);
-    const statusSelect=document.querySelector(`select.status-select[data-id="${id}"]`);
-    const vendorSelect=document.querySelector(`select.vendor-select[data-id="${id}"]`);
-    await updateDoc(ref,{
-      vendorReply:textarea.value,
-      estRepairTime:dateInput.value,
-      status:statusSelect.value,
-      vendorCompany:vendorSelect.value,
-      updatedAt:serverTimestamp()
+    loginBtn.addEventListener('click', async () => {
+      const email = document.getElementById('email').value;
+      const password = document.getElementById('password').value;
+      if(!email||!password){ alert("請輸入 email 與密碼"); return; }
+      try{ await signInWithEmailAndPassword(auth,email,password); alert('登入成功！'); }
+      catch(err){ console.error(err); alert('登入失敗：'+err.message); }
     });
-  }
 
-  // 刪除
-  if(e.target.classList.contains('delete-btn')){
-    if(!currentUser){ alert("需登入才能刪除"); return; }
-    if(confirm("確定刪除嗎？")) await deleteDoc(ref);
-  }
-});
+    logoutBtn.addEventListener('click', async () => {
+      try{ await signOut(auth); alert('已登出'); }
+      catch(err){ console.error(err); }
+    });
 
-// 分頁切換
-statusTabs.addEventListener('click', e=>{
-  const btn=e.target.closest('.tab-btn');
-  if(!btn) return;
-  activeTab=btn.dataset.status;
-  document.querySelectorAll('.tab-btn').forEach(b=>{ b.classList.remove('bg-white','active'); b.classList.add('bg-gray-200'); });
-  btn.classList.remove('bg-gray-200'); btn.classList.add('bg-white','active');
-  renderIssues();
-});
+    issueForm.addEventListener('submit', async e => {
+      e.preventDefault();
+      const issueName = document.getElementById('issueName').value.trim();
+      if(!issueName){ alert("請輸入損壞項目"); return; }
+      if(!currentUser){ alert("請先登入！"); return; }
+      try{
+        await addDoc(collection(db,"issues"),{
+          issueName,
+          status:"未處理",
+          datePosted: serverTimestamp(),
+          vendorReply:"",
+          estRepairTime:"",
+          vendorCompany:"",
+          createdBy: currentUser.email || currentUser.uid
+        });
+        issueForm.reset();
+      } catch(err){ console.error(err); alert("新增失敗"); }
+    });
 
-// 搜尋
-searchInput.addEventListener('input',()=>renderIssues());
+    function getTimestampMs(ts){
+      if(!ts) return 0;
+      try{ if(typeof ts.toDate==='function') return ts.toDate().getTime(); if(ts.seconds) return ts.seconds*1000; } catch(e){}
+      return 0;
+    }
 
-// 排序
-sortSelect.addEventListener('change', e=>{ currentSort=e.target.value; renderIssues(); });
+    function calcDaysFromTimestamp(ts){
+      const ms = getTimestampMs(ts);
+      if(!ms) return 0;
+      const now = Date.now();
+      return Math.ceil((now-ms)/(1000*60*60*24));
+    }
 
-// 啟動
-startRealtimeListen();
+    function escapeHtml(s){ return String(s||'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;').replaceAll("'","&#39;"); }
 
-</script>
+    function renderIssues(){
+      issueList.innerHTML='';
+      let items = allIssuesData.map(d=>({id:d.id,data:d.data()}));
+      if(activeTab!=='all') items = items.filter(i=>i.data.status===activeTab);
+      const search = searchInput.value.toLowerCase().trim();
+      if(search!=='') items = items.filter(i=>{
+        return (i.data.issueName||'').toLowerCase().includes(search) ||
+               (i.data.vendorReply||'').toLowerCase().includes(search);
+      });
+      items.sort((a,b)=>{
+        const ta=getTimestampMs(a.data.datePosted);
+        const tb=getTimestampMs(b.data.datePosted);
+        return currentSort==='asc'?ta-tb:tb-ta;
+      });
 
+      if(items.length===0){ issueList.innerHTML='<p class="text-gray-500">目前沒有符合條件的資料</p>'; return; }
+
+      items.forEach(item=>{
+        const data=item.data;
+        const id=item.id;
+        const waitingDays = data.datePosted && data.status!=='已完成' ? `<p class="text-sm text-gray-500">等待天數：${calcDaysFromTimestamp(data.datePosted)} 天</p>` : '';
+        const badge = statusBadge[data.status]||'bg-gray-500 text-white px-2 py-1 rounded text-sm';
+
+        const itemEl = document.createElement('div');
+        itemEl.className="bg-white shadow rounded p-4";
+        itemEl.innerHTML=`
+          <div class="flex justify-between items-center mb-2">
+            <h3 class="font-bold text-lg">${escapeHtml(data.issueName)}</h3>
+            <span class="${badge}">${escapeHtml(data.status)}</span>
+          </div>
+          <p class="text-sm text-gray-600">登載日期：${data.datePosted?.toDate?data.datePosted.toDate().toLocaleString('zh-TW'):'無日期'}</p>
+          ${waitingDays}
+          <label class="block mt-2"><strong>廠商回覆：</strong></label>
+          <textarea data-id="${id}" class="border rounded px-3 py-2 w-full" placeholder="廠商回覆..." rows="3">${escapeHtml(data.vendorReply)}</textarea>
+          <label class="block mt-2"><strong>預計維修時間：</strong></label>
+          <input type="date" data-id="${id}" value="${escapeHtml(data.estRepairTime)}" class="border rounded px-2 py-1 w-full">
+          <label class="block mt-2"><strong>承辦公司：</strong></label>
+          <select class="vendor-company-select border rounded px-2 py-1 w-full" data-id="${id}">
+            <option value="">請選擇公司</option>
+            ${vendorCompanies.map(c=>`<option value="${escapeHtml(c)}" ${data.vendorCompany===c?'selected':''}>${escapeHtml(c)}</option>`).join('')}
+          </select>
+          <div class="flex gap-2 mt-3">
+            <button class="update-btn bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded" data-id="${id}">更新</button>
+            ${currentUser?`<button class="delete-btn bg-red-500 hover:bg-red-600 text-white px-3 py-1 rounded" data-id="${id}">刪除</button>`:''}
+          </div>
+        `;
+        issueList.appendChild(itemEl);
+      });
+    }
+
+    statusTabs.addEventListener('click', e=>{
+      const btn = e.target.closest('.tab-btn'); if(!btn) return;
+      activeTab = btn.dataset.status||'all';
+      document.querySelectorAll('.tab-btn').forEach(b=>{ b.classList.remove('bg-white','active'); b.classList.add('bg-gray-200'); });
+      btn.classList.remove('bg-gray-200'); btn.classList.add('bg-white','active');
+      renderIssues();
+    });
+
+    sortSelect.addEventListener('change', e=>{ currentSort=e.target.value==='asc'?'asc':'desc'; renderIssues(); });
+    searchInput.addEventListener('input', e=>{ renderIssues(); });
+
+    issueList.addEventListener('click', async e=>{
+      const target = e.target;
+      const id = target.dataset?.id; if(!id) return;
+      const ref = doc(db,"issues",id);
+      if(target.classList.contains('update-btn')){
+        const replyEl=document.querySelector(`textarea[data-id="${id}"]`);
+        const estEl=document.querySelector(`input[data-id="${id}"]`);
+        const companyEl=document.querySelector(`select[data-id="${id}"]`);
+        const reply = replyEl?.value||'';
+        const est = estEl?.value||'';
+        const company = companyEl?.value||'';
+        try{ await updateDoc(ref,{vendorReply:reply,estRepairTime:est,vendorCompany:company,updatedBy:currentUser?currentUser.email||currentUser.uid:null,updatedAt:serverTimestamp()}); }
+        catch(err){ console.error(err); alert('更新失敗'); }
+      }
+      if(target.classList.contains('delete-btn')){
+        if(!currentUser){ alert('請先登入'); return; }
+        if(!confirm('確定刪除？')) return;
+        try{ await deleteDoc(ref); } catch(err){ console.error(err); alert('刪除失敗'); }
+      }
+    });
+
+    function startRealtimeListenAllIssues(){
+      if(unsubscribe) unsubscribe();
+      unsubscribe = onSnapshot(collection(db,"issues"), snapshot=>{
+        allIssuesData=snapshot.docs; renderIssues();
+      }, err=>{ console.error(err); issueList.innerHTML='<p class="text-red-500">無法載入資料</p>'; });
+    }
+
+    startRealtimeListenAllIssues();
+  </script>
 </body>
 </html>
