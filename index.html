@@ -1,364 +1,284 @@
 <!DOCTYPE html>
 <html lang="zh-Hant">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>維修管理平台</title>
-    <style>
-        body { 
-            font-family: Arial, sans-serif; 
-            margin: 20px; 
-            max-width: 800px; 
-            margin: 0 auto;
-            padding: 20px;
-            background-color: #f4f7f9;
-        }
-        .issue-item { 
-            border: 1px solid #ccc; 
-            padding: 15px; 
-            margin-bottom: 20px; 
-            border-radius: 8px; 
-            background-color: #ffffff;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
-            display: none; /* 預設隱藏，由 JS 控制顯示 */
-        }
-        .issue-item.show {
-            display: block;
-        }
-        .unprocessed { border-left: 5px solid #ff4d4d; }
-        .in-progress { border-left: 5px solid #ffc107; }
-        .waiting-parts { border-left: 5px solid #9c27b0; }
-        .completed { border-left: 5px solid #28a745; }
-        .vendor-form { 
-            margin-top: 15px; 
-            padding-top: 15px; 
-            border-top: 1px dashed #ccc; 
-        }
-        .vendor-form textarea, .vendor-form input, .vendor-form select { 
-            width: 100%; 
-            box-sizing: border-box; 
-            margin-top: 5px; 
-            border-radius: 4px;
-            border: 1px solid #ccc;
-            padding: 8px;
-        }
-        .update-btn, .delete-btn {
-            padding: 8px 15px;
-            border-radius: 4px;
-            border: none;
-            cursor: pointer;
-            color: white;
-            margin-top: 10px;
-        }
-        .update-btn { background-color: #007bff; }
-        .delete-btn { background-color: #dc3545; }
-        .update-btn:hover { background-color: #0056b3; }
-        .delete-btn:hover { background-color: #c82333; }
-        
-        #auth-container { 
-            text-align: right; 
-            margin-bottom: 20px; 
-        }
-        .tabs {
-            display: flex;
-            gap: 5px;
-            margin-bottom: 20px;
-            overflow-x: auto;
-            white-space: nowrap;
-        }
-        .tabs button {
-            background-color: #e9ecef;
-            border: 1px solid #dee2e6;
-            padding: 10px 15px;
-            cursor: pointer;
-            border-radius: 5px 5px 0 0;
-            font-size: 1rem;
-            transition: background-color 0.2s ease-in-out;
-        }
-        .tabs button.active {
-            background-color: #ffffff;
-            border-bottom-color: #ffffff;
-            font-weight: bold;
-        }
-        #searchContainer {
-            margin-bottom: 20px;
-        }
-        #searchInput {
-            width: 100%;
-            padding: 10px;
-            border-radius: 4px;
-            border: 1px solid #ccc;
-        }
-        
-        /* RWD 樣式 */
-        @media (max-width: 600px) {
-            body {
-                margin: 10px;
-                padding: 10px;
-            }
-            #auth-container {
-                text-align: center;
-                margin-bottom: 10px;
-            }
-            .tabs {
-                flex-wrap: nowrap;
-            }
-        }
-    </style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>維修管理平台</title>
+  <!-- Tailwind CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
 </head>
-<body>
+<body class="bg-gray-100 p-6">
 
-    <div id="auth-container">
-        <div id="login-form" style="display:none;">
-            <input type="email" id="email" placeholder="電子郵件">
-            <input type="password" id="password" placeholder="密碼">
-            <button id="login-btn">登入</button>
-        </div>
-        <div id="user-info" style="display:none;">
-            <span id="user-email"></span>
-            <button id="logout-btn">登出</button>
-        </div>
+  <!-- 登入區塊 -->
+  <div id="auth-container" class="flex justify-end mb-4">
+    <div id="login-form" class="space-x-2 hidden">
+      <input type="email" id="email" placeholder="電子郵件" class="border rounded px-2 py-1">
+      <input type="password" id="password" placeholder="密碼" class="border rounded px-2 py-1">
+      <button id="login-btn" class="bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded">登入</button>
     </div>
-    <hr>
-
-    <h2>新增維修項目</h2>
-    <form id="issueForm">
-        <label for="issueName">損壞項目：</label><br>
-        <input type="text" id="issueName" name="issueName" required><br><br>
-        <button type="submit">新增項目</button>
-    </form>
-
-    <hr>
-    
-    <h2>維修項目列表</h2>
-
-    <div class="tabs" id="statusTabs">
-        <button class="tab-btn active" data-status="all">所有項目</button>
-        <button class="tab-btn" data-status="未處理">未處理</button>
-        <button class="tab-btn" data-status="維修中">維修中</button>
-        <button class="tab-btn" data-status="待料中">待料中</button>
-        <button class="tab-btn" data-status="已完成">已完成</button>
+    <div id="user-info" class="hidden space-x-2">
+      <span id="user-email" class="font-semibold"></span>
+      <button id="logout-btn" class="bg-red-500 hover:bg-red-600 text-white px-3 py-1 rounded">登出</button>
     </div>
-    
-    <div id="searchContainer">
-        <input type="text" id="searchInput" placeholder="搜尋項目名稱或廠商回覆...">
+  </div>
+
+  <hr class="mb-6">
+
+  <!-- 新增項目 -->
+  <h2 class="text-xl font-bold mb-2">新增維修項目</h2>
+  <form id="issueForm" class="mb-6 space-y-2">
+    <input type="text" id="issueName" name="issueName" required 
+      class="border rounded px-3 py-2 w-full" placeholder="輸入損壞項目">
+    <button type="submit" class="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded">新增項目</button>
+  </form>
+
+  <hr class="mb-6">
+
+  <!-- 分頁 + 排序 -->
+  <div class="flex flex-col md:flex-row md:items-center md:justify-between mb-4 gap-2">
+    <div class="flex space-x-2 overflow-x-auto">
+      <button class="tab-btn bg-white border px-4 py-2 rounded-t-md active" data-status="all">所有項目</button>
+      <button class="tab-btn bg-gray-200 border px-4 py-2 rounded-t-md" data-status="未處理">未處理</button>
+      <button class="tab-btn bg-gray-200 border px-4 py-2 rounded-t-md" data-status="維修中">維修中</button>
+      <button class="tab-btn bg-gray-200 border px-4 py-2 rounded-t-md" data-status="待料中">待料中</button>
+      <button class="tab-btn bg-gray-200 border px-4 py-2 rounded-t-md" data-status="已完成">已完成</button>
     </div>
+    <select id="sortSelect" class="border px-2 py-1 rounded">
+      <option value="desc">依登載日期：新到舊</option>
+      <option value="asc">依登載日期：舊到新</option>
+    </select>
+  </div>
 
-    <div id="issueList">
-    </div>
+  <!-- 搜尋 -->
+  <div class="mb-4">
+    <input type="text" id="searchInput" placeholder="搜尋項目名稱或廠商回覆..."
+      class="border rounded w-full px-3 py-2">
+  </div>
 
-    <script type="module">
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.4.0/firebase-app.js";
-        import { getFirestore, collection, addDoc, onSnapshot, query, orderBy, doc, updateDoc, deleteDoc, serverTimestamp, where } from "https://www.gstatic.com/firebasejs/10.4.0/firebase-firestore.js";
-        import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.4.0/firebase-auth.js";
+  <!-- 維修列表 -->
+  <div id="issueList" class="space-y-4"></div>
 
-        const firebaseConfig = {
-          apiKey: "AIzaSyAJmR6Cj7RXO7fjzwvRUAto_ThEdbDJoXE",
-          authDomain: "ab-project-1e438.firebaseapp.com",
-          projectId: "ab-project-1e438",
-          storageBucket: "ab-project-1e438.firebasestorage.app",
-          messagingSenderId: "76552910163",
-          appId: "1:76552910163:web:7d0a40e84c52a7bccb9da6",
-          measurementId: "G-PBJR6HGK4N"
-        };
+  <!-- Firebase + 程式邏輯 -->
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.4.0/firebase-app.js";
+    import { getFirestore, collection, addDoc, onSnapshot, query, orderBy, doc, updateDoc, deleteDoc, serverTimestamp, where } from "https://www.gstatic.com/firebasejs/10.4.0/firebase-firestore.js";
+    import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.4.0/firebase-auth.js";
 
-        const app = initializeApp(firebaseConfig);
-        const db = getFirestore(app);
-        const auth = getAuth(app);
+    const firebaseConfig = {
+      apiKey: "AIzaSyAJmR6Cj7RXO7fjzwvRUAto_ThEdbDJoXE",
+      authDomain: "ab-project-1e438.firebaseapp.com",
+      projectId: "ab-project-1e438",
+      storageBucket: "ab-project-1e438.firebasestorage.app",
+      messagingSenderId: "76552910163",
+      appId: "1:76552910163:web:7d0a40e84c52a7bccb9da6",
+      measurementId: "G-PBJR6HGK4N"
+    };
 
-        onAuthStateChanged(auth, (user) => {
-            const loginForm = document.getElementById('login-form');
-            const userInfo = document.getElementById('user-info');
-            const userEmailSpan = document.getElementById('user-email');
-            
-            if (user) {
-                loginForm.style.display = 'none';
-                userInfo.style.display = 'block';
-                userEmailSpan.textContent = user.email;
-            } else {
-                loginForm.style.display = 'block';
-                userInfo.style.display = 'none';
-            }
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+    const auth = getAuth(app);
+
+    // 狀態標籤樣式
+    const statusBadge = {
+      "未處理": "bg-red-500 text-white px-2 py-1 rounded text-sm",
+      "維修中": "bg-yellow-500 text-white px-2 py-1 rounded text-sm",
+      "待料中": "bg-purple-600 text-white px-2 py-1 rounded text-sm",
+      "已完成": "bg-green-600 text-white px-2 py-1 rounded text-sm"
+    };
+
+    let unsubscribe = null;
+    let allIssuesData = [];
+    let currentSort = "desc"; // 預設排序
+
+    // 登入狀態監聽
+    onAuthStateChanged(auth, (user) => {
+      const loginForm = document.getElementById('login-form');
+      const userInfo = document.getElementById('user-info');
+      const userEmailSpan = document.getElementById('user-email');
+      if (user) {
+        loginForm.classList.add("hidden");
+        userInfo.classList.remove("hidden");
+        userEmailSpan.textContent = user.email;
+      } else {
+        loginForm.classList.remove("hidden");
+        userInfo.classList.add("hidden");
+      }
+    });
+
+    // 登入登出
+    document.getElementById('login-btn').addEventListener('click', async () => {
+      const email = document.getElementById('email').value;
+      const password = document.getElementById('password').value;
+      try {
+        await signInWithEmailAndPassword(auth, email, password);
+        alert('登入成功！');
+      } catch (error) {
+        alert('登入失敗：' + error.message);
+      }
+    });
+    document.getElementById('logout-btn').addEventListener('click', async () => {
+      await signOut(auth);
+      alert('您已登出。');
+    });
+
+    // 新增項目
+    const issueForm = document.getElementById('issueForm');
+    issueForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const issueName = document.getElementById('issueName').value;
+      const user = auth.currentUser;
+      if (!user) {
+        alert("請先登入！");
+        return;
+      }
+      try {
+        await addDoc(collection(db, "issues"), {
+          issueName,
+          status: "未處理",
+          datePosted: serverTimestamp(),
+          vendorReply: "",
+          estRepairTime: ""
         });
+        issueForm.reset();
+      } catch (e) {
+        console.error("新增失敗：", e);
+      }
+    });
 
-        document.getElementById('login-btn').addEventListener('click', async () => {
-            const email = document.getElementById('email').value;
-            const password = document.getElementById('password').value;
-            try {
-                await signInWithEmailAndPassword(auth, email, password);
-                alert('登入成功！');
-            } catch (error) {
-                alert('登入失敗：' + error.message);
-            }
-        });
+    // 渲染
+    const issueList = document.getElementById('issueList');
+    const searchInput = document.getElementById('searchInput');
 
-        document.getElementById('logout-btn').addEventListener('click', async () => {
-            await signOut(auth);
-            alert('您已登出。');
-        });
+    const renderIssues = (issues, searchTerm = '') => {
+      const normalizedSearchTerm = searchTerm.toLowerCase().trim();
+      issueList.innerHTML = '';
+      const user = auth.currentUser;
 
-        const issueForm = document.getElementById('issueForm');
-        issueForm.addEventListener('submit', async (e) => {
-            e.preventDefault();
-            const issueName = document.getElementById('issueName').value;
-            if (!issueName) {
-                alert("請輸入損壞項目！");
-                return;
-            }
-            try {
-                await addDoc(collection(db, "issues"), {
-                    issueName: issueName,
-                    status: "未處理",
-                    datePosted: serverTimestamp(),
-                    vendorReply: "",
-                    estRepairTime: ""
-                });
-                issueForm.reset();
-            } catch (e) {
-                console.error("新增文件時發生錯誤：", e);
-                alert("新增項目失敗，請檢查主控台。");
-            }
-        });
-        
-        const statusTabs = document.getElementById('statusTabs');
-        const issueList = document.getElementById('issueList');
-        const searchInput = document.getElementById('searchInput');
-        let unsubscribe = null; 
-        let allIssuesData = []; // 儲存所有從資料庫取得的資料
+      issues.forEach((doc) => {
+        const data = doc.data();
+        const issueId = doc.id;
 
-        const renderIssues = (issues, searchTerm = '') => {
-            const normalizedSearchTerm = searchTerm.toLowerCase().trim();
-            issueList.innerHTML = '';
-            const user = auth.currentUser;
+        // 搜尋過濾
+        const matchesSearch = normalizedSearchTerm === '' ||
+          data.issueName.toLowerCase().includes(normalizedSearchTerm) ||
+          (data.vendorReply && data.vendorReply.toLowerCase().includes(normalizedSearchTerm));
+        if (!matchesSearch) return;
 
-            issues.forEach((doc) => {
-                const data = doc.data();
-                const issueId = doc.id;
-                
-                // 執行客戶端搜尋
-                const matchesSearch = normalizedSearchTerm === '' ||
-                                      data.issueName.toLowerCase().includes(normalizedSearchTerm) ||
-                                      (data.vendorReply && data.vendorReply.toLowerCase().includes(normalizedSearchTerm));
+        // 等待天數
+        let waitingDaysHtml = '';
+        if (data.status !== '已完成' && data.datePosted) {
+          const today = new Date();
+          const postedDate = data.datePosted.toDate();
+          const diffDays = Math.ceil((today - postedDate) / (1000 * 60 * 60 * 24));
+          waitingDaysHtml = `<p class="text-sm text-gray-500">等待天數：${diffDays} 天</p>`;
+        }
 
-                // 如果不符合搜尋條件，則不顯示
-                if (!matchesSearch) {
-                    return;
-                }
+        // 狀態標籤
+        const statusTag = `<span class="${statusBadge[data.status] || 'bg-gray-500 text-white px-2 py-1 rounded'}">${data.status}</span>`;
 
-                let statusClass = 'unprocessed';
-                if (data.status === '已完成') statusClass = 'completed';
-                else if (data.status === '維修中') statusClass = 'in-progress';
-                else if (data.status === '待料中') statusClass = 'waiting-parts';
-                
-                const deleteBtnHtml = user ? `<button class="delete-btn" data-id="${issueId}">刪除</button>` : '';
+        const deleteBtnHtml = user ? `<button class="delete-btn bg-red-500 hover:bg-red-600 text-white px-3 py-1 rounded" data-id="${issueId}">刪除</button>` : '';
 
-                let waitingDaysHtml = '';
-                if (data.status !== '已完成' && data.datePosted) {
-                    const today = new Date();
-                    const postedDate = data.datePosted.toDate();
-                    const diffTime = today.getTime() - postedDate.getTime();
-                    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-                    waitingDaysHtml = `<p><strong>等待天數：</strong>${diffDays} 天</p>`;
-                }
+        const issueItem = document.createElement('div');
+        issueItem.className = "bg-white shadow rounded p-4";
+        issueItem.innerHTML = `
+          <div class="flex justify-between items-center mb-2">
+            <h3 class="font-bold text-lg">${data.issueName}</h3>
+            ${statusTag}
+          </div>
+          <p class="text-sm text-gray-600">登載日期：${data.datePosted ? data.datePosted.toDate().toLocaleString('zh-TW') : '載入中...'}</p>
+          ${waitingDaysHtml}
+          <p class="mt-2"><strong>廠商回覆：</strong>${data.vendorReply || '尚未回覆'}</p>
+          <label class="block mt-2"><strong>預計維修時間：</strong></label>
+          <input type="date" data-id="${issueId}" value="${data.estRepairTime}" class="border rounded px-2 py-1 w-full">
+          
+          <div class="vendor-form mt-3 space-y-2">
+            <textarea data-id="${issueId}" class="border rounded px-3 py-2 w-full" placeholder="廠商回覆..." rows="3">${data.vendorReply}</textarea>
+            <select class="status-select border rounded px-2 py-1 w-full" data-id="${issueId}">
+              <option value="未處理" ${data.status === '未處理' ? 'selected' : ''}>未處理</option>
+              <option value="維修中" ${data.status === '維修中' ? 'selected' : ''}>維修中</option>
+              <option value="待料中" ${data.status === '待料中' ? 'selected' : ''}>待料中</option>
+              <option value="已完成" ${data.status === '已完成' ? 'selected' : ''}>已完成</option>
+            </select>
+            <button class="update-btn bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded" data-id="${issueId}">更新</button>
+            ${deleteBtnHtml}
+          </div>
+        `;
+        issueList.appendChild(issueItem);
+      });
+    };
 
-                const issueItem = document.createElement('div');
-                issueItem.className = `issue-item ${statusClass} show`; // 加上 show 類別以顯示
-                issueItem.innerHTML = `
-                    <h3>${data.issueName}</h3>
-                    <p><strong>登載日期：</strong>${data.datePosted ? data.datePosted.toDate().toLocaleString('zh-TW') : '載入中...'}</p>
-                    <p><strong>目前狀態：</strong>${data.status}</p>
-                    ${waitingDaysHtml}
-                    <p><strong>廠商回覆：</strong>${data.vendorReply || '尚未回覆'}</p>
-                    <label><strong>預計維修時間：</strong></label>
-                    <input type="date" data-id="${issueId}" value="${data.estRepairTime}"><br>
-                    
-                    <div class="vendor-form">
-                        <textarea data-id="${issueId}" placeholder="廠商回覆..." rows="3">${data.vendorReply}</textarea><br>
-                        <select class="status-select" data-id="${issueId}">
-                            <option value="未處理" ${data.status === '未處理' ? 'selected' : ''}>未處理</option>
-                            <option value="維修中" ${data.status === '維修中' ? 'selected' : ''}>維修中</option>
-                            <option value="待料中" ${data.status === '待料中' ? 'selected' : ''}>待料中</option>
-                            <option value="已完成" ${data.status === '已完成' ? 'selected' : ''}>已完成</option>
-                        </select>
-                        <button class="update-btn" data-id="${issueId}">更新</button>
-                        ${deleteBtnHtml}
-                    </div>
-                `;
-                issueList.appendChild(issueItem);
-            });
-        };
+    // 監聽 Firestore
+    const setupRealtimeListener = (filterStatus, sortOrder) => {
+      if (unsubscribe) unsubscribe();
 
-        const setupRealtimeListener = (filterStatus) => {
-            if (unsubscribe) {
-                unsubscribe();
-            }
+      let issuesQuery;
+      if (filterStatus === 'all') {
+        issuesQuery = query(collection(db, "issues"), orderBy("datePosted", sortOrder));
+      } else {
+        issuesQuery = query(collection(db, "issues"), where("status", "==", filterStatus), orderBy("datePosted", sortOrder));
+      }
 
-            let issuesQuery;
-            if (filterStatus === 'all') {
-                issuesQuery = query(collection(db, "issues"), orderBy("datePosted", "desc"));
-            } else {
-                issuesQuery = query(collection(db, "issues"), where("status", "==", filterStatus), orderBy("datePosted", "desc"));
-            }
+      unsubscribe = onSnapshot(issuesQuery, (querySnapshot) => {
+        allIssuesData = querySnapshot.docs;
+        renderIssues(allIssuesData, searchInput.value);
+      });
+    };
 
-            unsubscribe = onSnapshot(issuesQuery, (querySnapshot) => {
-                allIssuesData = querySnapshot.docs; // 儲存完整的資料
-                renderIssues(allIssuesData, searchInput.value);
-            });
-        };
+    // 分頁切換
+    document.getElementById('statusTabs')?.addEventListener('click', (e) => {
+      if (e.target.matches('.tab-btn')) {
+        document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('bg-white', 'active'));
+        e.target.classList.add('bg-white', 'active');
+        setupRealtimeListener(e.target.dataset.status, currentSort);
+      }
+    });
 
-        statusTabs.addEventListener('click', (e) => {
-            if (e.target.matches('.tab-btn')) {
-                document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
-                e.target.classList.add('active');
-                
-                const filterStatus = e.target.dataset.status;
-                setupRealtimeListener(filterStatus);
-            }
-        });
-        
-        searchInput.addEventListener('input', (e) => {
-            renderIssues(allIssuesData, e.target.value);
-        });
+    // 排序切換
+    document.getElementById('sortSelect').addEventListener('change', (e) => {
+      currentSort = e.target.value;
+      const activeTab = document.querySelector('.tab-btn.active')?.dataset.status || 'all';
+      setupRealtimeListener(activeTab, currentSort);
+    });
 
-        setupRealtimeListener('all');
+    // 搜尋
+    searchInput.addEventListener('input', (e) => {
+      renderIssues(allIssuesData, e.target.value);
+    });
 
-        issueList.addEventListener('click', async (e) => {
-            const issueId = e.target.dataset.id;
-            const issueRef = doc(db, "issues", issueId);
-            const user = auth.currentUser;
+    // 更新與刪除
+    issueList.addEventListener('click', async (e) => {
+      const issueId = e.target.dataset.id;
+      if (!issueId) return;
+      const issueRef = doc(db, "issues", issueId);
+      const user = auth.currentUser;
 
-            if (e.target.classList.contains('update-btn')) {
-                const vendorReply = document.querySelector(`textarea[data-id="${issueId}"]`).value;
-                const estRepairTime = document.querySelector(`input[data-id="${issueId}"]`).value;
-                const newStatus = document.querySelector(`select[data-id="${issueId}"]`).value;
-                
-                try {
-                    await updateDoc(issueRef, {
-                        vendorReply: vendorReply,
-                        estRepairTime: estRepairTime,
-                        status: newStatus
-                    });
-                    console.log("狀態及回覆更新成功！");
-                } catch (e) {
-                    console.error("更新時發生錯誤：", e);
-                }
-            } else if (e.target.classList.contains('delete-btn')) {
-                if (!user) {
-                    alert("您沒有刪除此項目的權限，請先登入。");
-                    return;
-                }
-                const confirmed = confirm("您確定要刪除這個維修項目嗎？此操作無法復原。");
-                if (confirmed) {
-                    try {
-                        await deleteDoc(issueRef);
-                        console.log("項目已成功刪除！");
-                    } catch (e) {
-                        console.error("刪除時發生錯誤：", e);
-                    }
-                }
-            }
-        });
-    </script>
+      if (e.target.classList.contains('update-btn')) {
+        const vendorReply = document.querySelector(`textarea[data-id="${issueId}"]`).value;
+        const estRepairTime = document.querySelector(`input[data-id="${issueId}"]`).value;
+        const newStatus = document.querySelector(`select[data-id="${issueId}"]`).value;
+        try {
+          await updateDoc(issueRef, { vendorReply, estRepairTime, status: newStatus });
+        } catch (e) {
+          console.error("更新失敗：", e);
+        }
+      } else if (e.target.classList.contains('delete-btn')) {
+        if (!user) {
+          alert("您沒有刪除權限！");
+          return;
+        }
+        if (confirm("確定刪除？")) {
+          try {
+            await deleteDoc(issueRef);
+          } catch (e) {
+            console.error("刪除失敗：", e);
+          }
+        }
+      }
+    });
+
+    // 預設載入
+    setupRealtimeListener('all', currentSort);
+  </script>
 
 </body>
 </html>
