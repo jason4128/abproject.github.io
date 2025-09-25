@@ -33,6 +33,13 @@
     <h2 class="text-xl font-bold mb-2">新增維修項目</h2>
     <form id="issueForm" class="mb-6 space-y-2">
         <input type="text" id="issueName" name="issueName" required class="border rounded px-3 py-2 w-full text-black" placeholder="輸入損壞項目">
+        <select id="vendorSelect" name="vendor" class="border rounded px-3 py-2 w-full text-black">
+            <option value="">請選擇負責公司</option>
+            <option value="廷澧室內裝修工程有限公司">廷澧室內裝修工程有限公司</option>
+            <option value="動能機電工程股份有限公司">動能機電工程股份有限公司</option>
+            <option value="尚順能源科技有限公司">尚順能源科技有限公司</option>
+            <option value="安庭工程有限公司">安庭工程有限公司</option>
+        </select>
         <button type="submit" class="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded">新增項目</button>
     </form>
 
@@ -204,6 +211,7 @@
         issueForm.addEventListener('submit', async (e) => {
             e.preventDefault();
             const issueName = document.getElementById('issueName').value.trim();
+            const vendorCompany = document.getElementById('vendorSelect').value;
             if (!issueName) {
                 showMessageBox('請輸入損壞項目');
                 return;
@@ -213,17 +221,17 @@
                 return;
             }
             try {
-                const issueId = Date.now().toString();
-                await addDoc(collection(db, "issues"), {
-                    issueId,
+                const newIssueData = {
                     issueName,
                     status: "未處理",
                     datePosted: serverTimestamp(),
                     vendorReply: "",
                     estRepairTime: "",
-                    vendorCompany: "",
+                    vendorCompany,
                     createdBy: currentUser.email || currentUser.uid
-                });
+                };
+
+                await addDoc(collection(db, "issues"), newIssueData);
                 issueForm.reset();
                 showMessageBox('維修項目新增成功！');
             } catch (err) {
