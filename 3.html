@@ -1,0 +1,589 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>京都大阪旅遊行程及分帳系統</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@100..900&family=Noto+Sans+TC:wght@100..900&display=swap');
+        body {
+            font-family: 'Noto Sans TC', 'Inter', sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: #333;
+        }
+        [contenteditable]:focus {
+            outline: 2px solid #3b82f6;
+            background-color: #eef2ff;
+        }
+        .table-cell { padding: 12px; border-bottom: 1px solid #e5e7eb; vertical-align: top; }
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-thumb { background-color: #9ca3af; border-radius: 10px; }
+        .header-cell {
+            background: linear-gradient(135deg, #3b82f6, #1d4ed8);
+            color: white; position: sticky; top: 0; z-index: 10;
+        }
+        .tab { cursor: pointer; padding: 10px 20px; font-weight: 600; transition: all 0.2s; border-radius: 8px 8px 0 0; margin-bottom: -1px; }
+        .tab-active { background-color: white; color: #1d4ed8; border-top: 3px solid #1d4ed8; border-left: 1px solid #e5e7eb; border-right: 1px solid #e5e7eb; border-bottom: 1px solid white; }
+        .tab-inactive { background-color: #f3f4f6; color: #4b5563; border-top: 1px solid #e5e7eb; border-bottom: 1px solid #e5e7eb; }
+        .currency-input-container {
+            display: flex; justify-content: flex-end; align-items: center; padding: 4px 8px; 
+            border: 1px solid #d1d5db; border-radius: 6px; background-color: #fff; box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+        }
+        .currency-input-container:focus-within { border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59,130,246,0.5); }
+        .currency-input { appearance: none; width: 8rem; text-align: right; padding: 0; border: none; outline: none; background: transparent; }
+        .currency-input::-webkit-outer-spin-button, .currency-input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+        .dragging { opacity: 0.7; transform: rotate(2deg); border: 2px dashed #3b82f6; }
+        .drag-over { border-top: 2px solid #10b981; background-color: #f0fdf4 !important; }
+        @media (max-width: 768px) {
+            .currency-input { width: 5rem !important; font-size: 14px; }
+            .table-cell { padding: 8px 4px !important; font-size: 12px; }
+            .tab { padding: 8px 12px !important; font-size: 14px; }
+        }
+        .smooth-transition { transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
+    </style>
+</head>
+<body class="p-4 sm:p-8 min-h-screen">
+    <div class="max-w-7xl mx-auto bg-white shadow-2xl rounded-xl overflow-hidden">
+        
+        <!-- Header -->
+        <header class="p-6 bg-gradient-to-r from-blue-600 to-purple-600 rounded-t-xl">
+            <h1 class="text-3xl font-bold text-white mb-2">🇯🇵 京都大阪4天3夜旅遊規劃 v2.1 🏯</h1>
+            <p class="text-blue-100 text-sm">✨ 拖曳整列調整順序 | ✏️點擊編輯地圖 | 即時分帳計算</p>
+        </header>
+
+        <!-- Navigation Tabs -->
+        <div class="flex border-b border-gray-200 px-6 pt-2 bg-gray-50">
+            <div id="itinerary-tab" class="tab tab-active" onclick="showPage('itinerary')">📅 行程表</div>
+            <div id="split-tab" class="tab tab-inactive ml-2" onclick="showPage('split')">💰 分帳表 (6人)</div>
+        </div>
+
+        <!-- Configuration Bar -->
+        <div class="p-6 bg-gray-50 border-b border-gray-200 flex flex-wrap gap-4 items-center">
+            <div class="flex items-center space-x-2">
+                <label class="text-sm font-medium text-gray-700">TWD/JPY 匯率:</label>
+                <div class="flex items-center border rounded-md shadow-sm bg-white p-2">
+                    <span class="text-sm font-semibold text-gray-600">1 JPY = </span>
+                    <input type="number" id="exchangeRate" value="22.50" step="0.01" min="0.01"
+                           class="w-20 text-sm text-right font-semibold p-0 border-none focus:ring-0 focus:outline-none bg-transparent"
+                           oninput="updateExchangeRate(parseFloat(this.value)); calculateTotals(); renderSplitView()"
+                           title="即時匯率 (例如: 22.50)">
+                    <span class="text-sm text-gray-600"> TWD</span>
+                </div>
+                <button onclick="fetchExchangeRate()" class="bg-blue-500 text-white px-3 py-1 rounded text-sm hover:bg-blue-600">🔄 更新</button>
+            </div>
+            <div id="itinerary-actions" class="">
+                <button onclick="addRow()" class="bg-emerald-500 hover:bg-emerald-600 text-white font-semibold py-2 px-4 rounded-lg shadow transition duration-200 text-sm">+ 新增行程</button>
+                <button onclick="loadDefaultItinerary()" class="bg-purple-500 hover:bg-purple-600 text-white font-semibold py-2 px-4 rounded-lg shadow ml-2 text-sm">📋 載入預設</button>
+            </div>
+            <div id="split-actions" class="hidden flex space-x-2">
+                <button onclick="addExpense()" class="bg-emerald-500 hover:bg-emerald-600 text-white font-semibold py-2 px-4 rounded-lg shadow text-sm">+ 登載支出</button>
+                <button onclick="togglePersonEditModal()" class="bg-blue-500 hover:bg-blue-600 text-white font-semibold py-2 px-4 rounded-lg shadow text-sm">👤 編輯人名</button>
+            </div>
+        </div>
+
+        <!-- Itinerary View -->
+        <div id="itinerary-view" class="p-4 sm:p-6">
+            <div class="overflow-x-auto">
+                <table id="itineraryTable" class="min-w-full divide-y divide-gray-200">
+                    <thead>
+                        <tr class="text-left text-xs uppercase tracking-wider">
+                            <th class="header-cell rounded-tl-xl w-16">日期</th>
+                            <th class="header-cell w-20">時間</th>
+                            <th class="header-cell w-48">地點</th>
+                            <th class="header-cell w-32">交通</th>
+                            <th class="header-cell w-28">地圖</th>
+                            <th class="header-cell w-32 text-right">✅ 已支出</th>
+                            <th class="header-cell w-32 text-right">💰 預算</th>
+                            <th class="header-cell w-32 text-right">台幣</th>
+                            <th class="header-cell w-48 rounded-tr-xl">備註</th>
+                            <th class="header-cell w-16">🗑️</th>
+                        </tr>
+                    </thead>
+                    <tbody id="itineraryBody" class="bg-white divide-y divide-gray-200 text-sm"></tbody>
+                    <tfoot>
+                        <tr class="bg-gradient-to-r from-blue-50 to-purple-50 text-base font-bold text-gray-800">
+                            <td colspan="5" class="table-cell text-right py-4">總計:</td>
+                            <td id="totalSpentJpy" class="table-cell text-right py-4 text-red-600">0 JPY</td>
+                            <td id="totalEstimatedJpy" class="table-cell text-right py-4 text-red-600">0 JPY</td>
+                            <td id="totalSpentTwd" class="table-cell text-right py-4 text-green-600">0 TWD</td>
+                            <td colspan="2" class="table-cell py-4"></td>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+        </div>
+
+        <!-- Split View -->
+        <div id="split-view" class="p-4 sm:p-6 hidden">
+            <h2 class="text-2xl font-semibold text-gray-800 mb-4 border-b pb-2">💵 支出登載表</h2>
+            <div class="overflow-x-auto mb-8 shadow-md rounded-lg border">
+                <table class="min-w-full divide-y divide-gray-200">
+                    <thead class="bg-gray-50">
+                        <tr class="text-left text-xs uppercase tracking-wider text-gray-500">
+                            <th class="p-3 w-48">項目名稱</th>
+                            <th class="p-3 w-40 text-right">金額</th>
+                            <th class="p-3 w-28">幣別</th>
+                            <th class="p-3 w-32">付款人</th>
+                            <th class="p-3 w-40 text-right">台幣金額</th>
+                            <th class="p-3 w-16">🗑️</th>
+                        </tr>
+                    </thead>
+                    <tbody id="expensesBody" class="bg-white divide-y divide-gray-200 text-sm"></tbody>
+                </table>
+            </div>
+
+            <h2 class="text-2xl font-semibold text-gray-800 mb-4 border-b pb-2">⚖️ 即時結算結果</h2>
+            <div id="settlement-summary" class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6"></div>
+            <h3 class="text-xl font-semibold text-gray-800 mb-3">🔄 轉帳清單 (誰該付誰)</h3>
+            <div id="settlement-list" class="space-y-3 p-4 border rounded-lg bg-yellow-50 text-gray-800"></div>
+        </div>
+    </div>
+
+    <script>
+        // === 全域變數 ===
+        const JPY_TO_TWD_RATE_KEY = 'jpyToTwdRate';
+        const ITINERARY_KEY = 'itineraryData';
+        const EXPENSES_KEY = 'splitExpenses';
+        const PEOPLE_KEY = 'splitPeople';
+        
+        let EXCHANGE_RATE = parseFloat(localStorage.getItem(JPY_TO_TWD_RATE_KEY)) || 22.50;
+        const DEFAULT_PEOPLE = ['A君', 'B君', 'C君', 'D君', 'E君', 'F君'];
+        let PEOPLE = JSON.parse(localStorage.getItem(PEOPLE_KEY)) || DEFAULT_PEOPLE;
+        
+        // 🚀 完整4天3夜預設行程
+        const DEFAULT_ITINERARY = [
+            { day: 1, time: "08:00", location: "關西機場 → 京都", travelTime: "75分 (Haruka)", mapLink: "https://goo.gl/maps/KIXtoKyoto", spentJpy: 0, estimatedJpy: 3000, notes: "Haruka特急列車" },
+            { day: 1, time: "10:00", location: "清水寺", travelTime: "巴士15分", mapLink: "https://goo.gl/maps/Kiyomizu", spentJpy: 0, estimatedJpy: 400, notes: "門票400円" },
+            { day: 1, time: "12:00", location: "祇園", travelTime: "步行10分", mapLink: "https://goo.gl/maps/Gion", spentJpy: 0, estimatedJpy: 2000, notes: "午餐+小吃" },
+            { day: 2, time: "09:00", location: "金閣寺", travelTime: "巴士40分", mapLink: "https://goo.gl/maps/Kinkaku", spentJpy: 0, estimatedJpy: 500, notes: "門票500円" },
+            { day: 2, time: "13:00", location: "伏見稻荷大社", travelTime: "JR25分", mapLink: "https://goo.gl/maps/Fushimi", spentJpy: 0, estimatedJpy: 0, notes: "免費" },
+            { day: 3, time: "08:00", location: "京都 → 大阪", travelTime: "JR30分", mapLink: "https://goo.gl/maps/KyotoOsaka", spentJpy: 0, estimatedJpy: 580, notes: "JR票580円" },
+            { day: 3, time: "10:00", location: "大阪城", travelTime: "地鐵15分", mapLink: "https://goo.gl/maps/OsakaCastle", spentJpy: 0, estimatedJpy: 600, notes: "門票600円" },
+            { day: 3, time: "14:00", location: "心齋橋", travelTime: "步行20分", mapLink: "https://goo.gl/maps/Shinsaibashi", spentJpy: 0, estimatedJpy: 3000, notes: "購物+晚餐" },
+            { day: 4, time: "09:00", location: "環球影城", travelTime: "JR20分", mapLink: "https://goo.gl/maps/USJ", spentJpy: 0, estimatedJpy: 8900, notes: "門票1日券" },
+            { day: 4, time: "18:00", location: "大阪 → 關西機場", travelTime: "JR50分", mapLink: "https://goo.gl/maps/OsakaKIX", spentJpy: 0, estimatedJpy: 1200, notes: "Haruka回程" }
+        ];
+        
+        let itineraryData = JSON.parse(localStorage.getItem(ITINERARY_KEY)) || DEFAULT_ITINERARY;
+        let expenses = JSON.parse(localStorage.getItem(EXPENSES_KEY)) || [
+            { id: Date.now() - 1, description: "來回機票", amount: 15000, currency: "TWD", payer: 'A君' },
+            { id: Date.now(), description: "Day1晚餐", amount: 8400, currency: "JPY", payer: 'C君' }
+        ];
+        let currentPage = 'itinerary';
+
+        // === 核心功能 ===
+        function updateExchangeRate(rate) {
+            EXCHANGE_RATE = rate;
+            localStorage.setItem(JPY_TO_TWD_RATE_KEY, rate.toFixed(2));
+            document.getElementById('exchangeRate').value = rate.toFixed(2);
+        }
+
+        async function fetchExchangeRate() {
+            try {
+                const response = await fetch('https://api.exchangerate-api.com/v4/latest/JPY');
+                const data = await response.json();
+                const rate = data.rates.TWD;
+                updateExchangeRate(rate);
+                calculateTotals();
+                renderSplitView();
+            } catch (e) {
+                // 安靜失敗
+            }
+        }
+
+        function showPage(pageName) {
+            currentPage = pageName;
+            document.getElementById('itinerary-view').classList.toggle('hidden', pageName !== 'itinerary');
+            document.getElementById('split-view').classList.toggle('hidden', pageName !== 'split');
+            document.getElementById('itinerary-actions').classList.toggle('hidden', pageName !== 'itinerary');
+            document.getElementById('split-actions').classList.toggle('hidden', pageName !== 'split');
+            document.getElementById('itinerary-tab').className = pageName === 'itinerary' ? 'tab tab-active' : 'tab tab-inactive';
+            document.getElementById('split-tab').className = pageName === 'split' ? 'tab tab-active' : 'tab tab-inactive';
+            if (pageName === 'split') renderSplitView();
+        }
+
+        // === 行程表功能 ===
+        function renderTable() {
+            const tbody = document.getElementById('itineraryBody');
+            tbody.innerHTML = '';
+            
+            itineraryData.forEach((item, index) => {
+                const row = tbody.insertRow();
+                row.className = 'hover:bg-gray-50 smooth-transition cursor-move';
+                row.draggable = true;
+                row.ondragstart = (e) => handleDragStart(e, index);
+                row.ondragover = handleDragOver;
+                row.ondrop = (e) => handleDrop(e, index);
+                row.ondragenter = handleDragEnter;
+                row.ondragleave = handleDragLeave;
+
+                const cells = [
+                    { key: 'day', editable: true, class: 'font-bold' },
+                    { key: 'time', editable: true },
+                    { key: 'location', editable: true },
+                    { key: 'travelTime', editable: true },
+                    { key: 'mapLink', editable: false },
+                    { key: 'spentJpy', editable: true, budget: true, class: 'text-red-500 text-right' },
+                    { key: 'estimatedJpy', editable: true, budget: true, class: 'text-red-500 text-right' },
+                    { key: 'twd', computed: true, class: 'text-green-600 text-right font-mono' },
+                    { key: 'notes', editable: true }
+                ];
+
+                cells.forEach(field => {
+                    const cell = row.insertCell();
+                    cell.className = `table-cell ${field.class || ''}`;
+                    
+                    if (field.key === 'mapLink') {
+                        const url = item.mapLink || '';
+                        const text = url && url !== 'https://maps.google.com' ? '🗺️ 查看' : '📍 設定';
+                        cell.innerHTML = `
+                            <div class="flex items-center space-x-2">
+                                <a href="${url}" target="_blank" class="text-blue-500 hover:text-blue-700 text-sm ${url ? '' : 'text-gray-400 italic'}">${text}</a>
+                                <button onclick="startMapLinkEdit(${index})" class="p-1 hover:bg-blue-100 rounded-full">✏️</button>
+                            </div>
+                        `;
+                    } else if (field.computed) {
+                        const twd = Math.round(item.spentJpy * EXCHANGE_RATE);
+                        cell.textContent = `${twd.toLocaleString()} TWD`;
+                    } else {
+                        let content = field.budget ? (item[field.key] || 0).toLocaleString() : item[field.key] || '';
+                        cell.textContent = content;
+                        
+                        if (field.editable) {
+                            cell.contentEditable = true;
+                            cell.onblur = (e) => handleCellEdit(index, field.key, e.target.innerText, field.budget);
+                        }
+                    }
+                });
+
+                const delCell = row.insertCell();
+                delCell.className = 'table-cell text-center';
+                delCell.innerHTML = `<button onclick="deleteRow(${index})" class="text-red-500 hover:text-red-700 p-2 rounded-full hover:bg-red-50">🗑️</button>`;
+            });
+            calculateTotals();
+        }
+
+        function handleCellEdit(index, key, value, isBudget) {
+            let parsed = isBudget ? parseInt(value.replace(/[^0-9]/g, '')) || 0 : value.trim();
+            itineraryData[index][key] = parsed;
+            saveItinerary();
+            renderTable();
+        }
+
+        function startMapLinkEdit(index) {
+            const row = document.querySelector(`#itineraryBody tr:nth-child(${index + 1})`);
+            const cell = row.cells[4];
+            const input = document.createElement('input');
+            input.type = 'url';
+            input.value = itineraryData[index].mapLink || '';
+            input.className = 'w-full p-1 border-2 border-blue-300 rounded';
+            input.placeholder = '貼上Google地圖連結';
+            input.onblur = () => {
+                itineraryData[index].mapLink = input.value;
+                saveItinerary();
+                renderTable();
+            };
+            input.onkeypress = (e) => e.key === 'Enter' && input.blur();
+            cell.innerHTML = ''; 
+            cell.appendChild(input);
+            input.focus();
+        }
+
+        let draggedIndex = null;
+        function handleDragStart(e, index) { draggedIndex = index; e.target.classList.add('dragging'); }
+        function handleDragOver(e) { e.preventDefault(); }
+        function handleDragEnter(e) { e.target.closest('tr')?.classList.add('drag-over'); }
+        function handleDragLeave(e) { e.target.closest('tr')?.classList.remove('drag-over'); }
+        function handleDrop(e, targetIndex) {
+            e.preventDefault();
+            document.querySelectorAll('tr').forEach(tr => tr.classList.remove('dragging', 'drag-over'));
+            if (draggedIndex !== targetIndex) {
+                const [item] = itineraryData.splice(draggedIndex, 1);
+                itineraryData.splice(targetIndex, 0, item);
+                saveItinerary();
+                renderTable();
+            }
+        }
+
+        function addRow() {
+            const lastDay = itineraryData.length ? Math.max(...itineraryData.map(i => i.day)) : 1;
+            itineraryData.push({
+                day: lastDay, time: "00:00", location: "新增地點", travelTime: "", 
+                mapLink: "", spentJpy: 0, estimatedJpy: 0, notes: ""
+            });
+            saveItinerary();
+            renderTable();
+        }
+
+        function deleteRow(index) {
+            if (confirm('確定刪除此行程？')) {
+                itineraryData.splice(index, 1);
+                saveItinerary();
+                renderTable();
+            }
+        }
+
+        function loadDefaultItinerary() {
+            if (confirm('載入預設4天3夜行程，將覆蓋現有資料？')) {
+                itineraryData = [...DEFAULT_ITINERARY];
+                saveItinerary();
+                renderTable();
+            }
+        }
+
+        function calculateTotals() {
+            const totalSpent = itineraryData.reduce((sum, i) => sum + (i.spentJpy || 0), 0);
+            const totalEst = itineraryData.reduce((sum, i) => sum + (i.estimatedJpy || 0), 0);
+            document.getElementById('totalSpentJpy').textContent = `${totalSpent.toLocaleString()} JPY`;
+            document.getElementById('totalEstimatedJpy').textContent = `${totalEst.toLocaleString()} JPY`;
+            document.getElementById('totalSpentTwd').textContent = `${Math.round(totalSpent * EXCHANGE_RATE).toLocaleString()} TWD`;
+        }
+
+        function saveItinerary() { localStorage.setItem(ITINERARY_KEY, JSON.stringify(itineraryData)); }
+
+        // 🔥 === 分帳功能 ===
+        let updateTimeout = null;
+
+        function renderSplitView() {
+            const tbody = document.getElementById('expensesBody');
+            tbody.innerHTML = '';
+            
+            expenses.forEach(expense => {
+                const row = tbody.insertRow();
+                row.id = `expense-${expense.id}`;
+                
+                const descCell = row.insertCell();
+                descCell.className = 'table-cell';
+                descCell.innerHTML = `<span contenteditable="true" onblur="updateExpenseField(${expense.id}, 'description', this.textContent)">${expense.description}</span>`;
+                
+                const amountCell = row.insertCell();
+                amountCell.className = 'table-cell text-right p-2';
+                amountCell.innerHTML = `
+                    <div class="currency-input-container">
+                        <input type="number" 
+                               value="${expense.amount}" 
+                               min="0" 
+                               class="currency-input"
+                               oninput="handleAmountInput(${expense.id}, this.value)"
+                               onblur="finalizeAmountUpdate(${expense.id}, this.value)"
+                               placeholder="0">
+                    </div>
+                `;
+                
+                const currencyCell = row.insertCell();
+                currencyCell.className = 'table-cell';
+                currencyCell.innerHTML = createCurrencySelect(expense.id, expense.currency);
+                
+                const payerCell = row.insertCell();
+                payerCell.className = 'table-cell';
+                payerCell.innerHTML = createPayerSelect(expense.id, expense.payer);
+                
+                const twdCell = row.insertCell();
+                twdCell.className = 'table-cell text-right font-mono text-green-600';
+                twdCell.id = `twd-${expense.id}`;
+                twdCell.textContent = `${calculateTwdEquivalent(expense.amount, expense.currency).toLocaleString()} TWD`;
+                
+                const delCell = row.insertCell();
+                delCell.className = 'table-cell text-center';
+                delCell.innerHTML = `<button onclick="deleteExpense(${expense.id})" class="text-red-500 hover:text-red-700 p-2 rounded-full hover:bg-red-50">🗑️</button>`;
+            });
+            
+            setTimeout(() => calculateAndRenderSettlement(), 100);
+        }
+
+        function handleAmountInput(id, value) {
+            clearTimeout(updateTimeout);
+            const expense = expenses.find(e => e.id === id);
+            if (expense) {
+                expense.amount = parseFloat(value) || 0;
+                const twdCell = document.getElementById(`twd-${id}`);
+                if (twdCell) {
+                    twdCell.textContent = `${calculateTwdEquivalent(value, expense.currency).toLocaleString()} TWD`;
+                }
+            }
+        }
+
+        function finalizeAmountUpdate(id, value) {
+            const expense = expenses.find(e => e.id === id);
+            if (expense) {
+                expense.amount = parseFloat(value) || 0;
+                localStorage.setItem(EXPENSES_KEY, JSON.stringify(expenses));
+                setTimeout(() => calculateAndRenderSettlement(), 200);
+            }
+        }
+
+        function createCurrencySelect(id, current) {
+            return `<select onchange="updateExpenseField(${id}, 'currency', this.value)" class="p-1 border rounded w-full">
+                <option value="TWD" ${current === 'TWD' ? 'selected' : ''}>TWD</option>
+                <option value="JPY" ${current === 'JPY' ? 'selected' : ''}>JPY</option>
+            </select>`;
+        }
+
+        function createPayerSelect(id, current) {
+            return `<select onchange="updateExpenseField(${id}, 'payer', this.value)" class="p-1 border rounded w-full">
+                ${PEOPLE.map(p => `<option value="${p}" ${current === p ? 'selected' : ''}>${p}</option>`).join('')}
+            </select>`;
+        }
+
+        function updateExpenseField(id, field, value) {
+            const expense = expenses.find(e => e.id === id);
+            if (expense) {
+                expense[field] = value;
+                localStorage.setItem(EXPENSES_KEY, JSON.stringify(expenses));
+                
+                if (field === 'currency' || field === 'amount') {
+                    const twdCell = document.getElementById(`twd-${id}`);
+                    if (twdCell) {
+                        twdCell.textContent = `${calculateTwdEquivalent(expense.amount, expense.currency).toLocaleString()} TWD`;
+                    }
+                }
+                
+                setTimeout(() => calculateAndRenderSettlement(), 200);
+            }
+        }
+
+        function calculateTwdEquivalent(amount, currency) {
+            const num = parseFloat(amount) || 0;
+            return currency === 'JPY' ? Math.round(num * EXCHANGE_RATE) : Math.round(num);
+        }
+
+        function addExpense() {
+            expenses.push({
+                id: Date.now(), description: '新支出', amount: 0, currency: 'JPY', payer: PEOPLE[0]
+            });
+            localStorage.setItem(EXPENSES_KEY, JSON.stringify(expenses));
+            renderSplitView();
+        }
+
+        function deleteExpense(id) {
+            if (confirm('確定刪除？')) {
+                expenses = expenses.filter(e => e.id !== id);
+                localStorage.setItem(EXPENSES_KEY, JSON.stringify(expenses));
+                renderSplitView();
+            }
+        }
+
+        function togglePersonEditModal() {
+            const names = prompt('輸入6人姓名 (逗號分隔):', PEOPLE.join(','));
+            if (names) {
+                const newPeople = names.split(',').map(n => n.trim()).filter(Boolean);
+                if (newPeople.length === 6) {
+                    PEOPLE = newPeople;
+                    localStorage.setItem(PEOPLE_KEY, JSON.stringify(PEOPLE));
+                    renderSplitView();
+                } else alert('請輸入正好6個姓名！');
+            }
+        }
+
+        function calculateAndRenderSettlement() {
+            const balance = {};
+            PEOPLE.forEach(p => balance[p] = 0);
+            let totalTWD = 0;
+            
+            expenses.forEach(e => {
+                const twd = calculateTwdEquivalent(e.amount, e.currency);
+                balance[e.payer] += twd;
+                totalTWD += twd;
+            });
+            
+            const sharePerPerson = totalTWD / PEOPLE.length;
+            
+            const netBalance = {};
+            PEOPLE.forEach(person => {
+                netBalance[person] = Math.round((balance[person] - sharePerPerson) * 100) / 100; 
+            });
+            
+            console.log('總支出:', totalTWD);
+            console.log('每人應付:', sharePerPerson);
+            console.log('淨餘額:', netBalance);
+            
+            const creditors = []; 
+            const debtors = [];   
+            
+            PEOPLE.forEach(person => {
+                const amount = Math.abs(Math.round(netBalance[person]));
+                if (netBalance[person] > 0) {
+                    creditors.push({ name: person, amount });
+                } else if (netBalance[person] < 0 && amount > 0) {
+                    debtors.push({ name: person, amount });
+                }
+            });
+            
+            let settlements = [];
+            let i = 0, j = 0;
+            while (i < debtors.length && j < creditors.length) {
+                const transfer = Math.min(debtors[i].amount, creditors[j].amount);
+                if (transfer >= 1) {
+                    settlements.push({
+                        from: debtors[i].name,
+                        to: creditors[j].name,
+                        amount: transfer
+                    });
+                }
+                debtors[i].amount -= transfer;
+                creditors[j].amount -= transfer;
+                
+                if (debtors[i].amount < 1) i++;
+                if (creditors[j].amount < 1) j++;
+            }
+            
+            renderSettlementSummary(totalTWD, sharePerPerson, netBalance);
+            renderSettlementList(settlements);
+        }
+
+        function renderSettlementSummary(totalTWD, sharePerPerson, netBalance) {
+            document.getElementById('settlement-summary').innerHTML = `
+                <div class="p-4 bg-blue-100 rounded-lg">
+                    <p class="text-sm">總支出</p>
+                    <p class="text-2xl font-bold text-blue-900">${totalTWD.toLocaleString()} TWD</p>
+                </div>
+                <div class="p-4 bg-green-100 rounded-lg">
+                    <p class="text-sm">每人應付</p>
+                    <p class="text-2xl font-bold text-green-900">${Math.round(sharePerPerson).toLocaleString()} TWD</p>
+                </div>
+                <div class="p-4 bg-purple-100 rounded-lg">
+                    <p class="text-sm font-medium">個人結餘</p>
+                    <div class="grid grid-cols-3 gap-2 mt-2 text-xs">
+                        ${PEOPLE.map(person => {
+                            const net = Math.round(netBalance[person]);
+                            const color = net >= 0 ? 'text-green-700' : 'text-red-700';
+                            const bg = net >= 0 ? 'bg-green-50' : 'bg-red-50';
+                            return `<div class="p-1 rounded text-center ${bg}">
+                                <strong>${person}</strong><br>
+                                <span class="${color} font-bold">${net >= 0 ? '+' : ''}${net}</span>
+                            </div>`;
+                        }).join('')}
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderSettlementList(settlements) {
+            const listDiv = document.getElementById('settlement-list');
+            
+            if (settlements.length === 0) {
+                listDiv.innerHTML = '<p class="text-center text-green-600 font-bold py-4">✅ 帳目已平衡，無需轉帳！</p>';
+                listDiv.className = 'space-y-3 p-4 border rounded-lg bg-green-50 text-gray-800';
+            } else {
+                listDiv.innerHTML = settlements.map(s => `
+                    <div class="flex justify-between items-center p-3 bg-white rounded-md shadow border border-yellow-200">
+                        <span class="font-medium">${s.from}</span>
+                        <span class="text-gray-500 mx-2">➡️ 轉</span>
+                        <span class="font-medium">${s.to}</span>
+                        <span class="ml-auto font-bold text-lg text-red-600">${s.amount.toLocaleString()} TWD</span>
+                    </div>
+                `).join('');
+                listDiv.className = 'space-y-3 p-4 border rounded-lg bg-yellow-50 text-gray-800';
+            }
+        }
+
+        // === 初始化 ===
+        window.onload = () => {
+            document.getElementById('exchangeRate').value = EXCHANGE_RATE.toFixed(2);
+            showPage('itinerary');
+            renderTable();
+        };
+    </script>
+</body>
+</html>
